@@ -53,8 +53,13 @@ export async function getAllBriefs(): Promise<ProjectBrief[]> {
 
 export async function deleteBrief(id: string): Promise<boolean> {
   const supabase = await createClient();
-  const { error } = await supabase.from("briefs").delete().eq("id", id);
-  return !error;
+  const { data, error } = await supabase
+    .from("briefs")
+    .delete()
+    .eq("id", id)
+    .select("id");
+  if (error) return false;
+  return (data?.length ?? 0) > 0;
 }
 
 export async function getChatMessages(
@@ -99,13 +104,13 @@ export async function clearChatMessages(briefId: string): Promise<void> {
   await supabase.from("chat_messages").delete().eq("brief_id", briefId);
 }
 
-// Usage tracking
+// Usage tracking — returns the usage record ID for potential rollback
 export async function trackUsage(
   userId: string,
   action: string,
   repoFullName?: string,
   tokensUsed?: number
-): Promise<void> {
+): Promise<string | null> {
   const supabase = await createClient();
   const row: UsageInsert = {
     user_id: userId,
@@ -113,7 +118,13 @@ export async function trackUsage(
     repo_full_name: repoFullName ?? null,
     tokens_used: tokensUsed ?? 0,
   };
-  await supabase.from("usage").insert(row);
+  const { data } = await supabase.from("usage").insert(row).select("id").single();
+  return data?.id ?? null;
+}
+
+export async function rollbackUsage(usageId: string): Promise<void> {
+  const supabase = await createClient();
+  await supabase.from("usage").delete().eq("id", usageId);
 }
 
 export async function getUsageCount(

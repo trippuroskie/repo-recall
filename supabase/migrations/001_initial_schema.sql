@@ -25,7 +25,9 @@ create policy "Users can view their own profile"
   on public.profiles for select using (auth.uid() = id);
 
 create policy "Users can update their own profile"
-  on public.profiles for update using (auth.uid() = id);
+  on public.profiles for update
+  using (auth.uid() = id)
+  with check (auth.uid() = id);
 
 create policy "Users can insert their own profile"
   on public.profiles for insert with check (auth.uid() = id);
@@ -81,7 +83,9 @@ create policy "Users can insert their own briefs"
   on public.briefs for insert with check (auth.uid() = user_id);
 
 create policy "Users can update their own briefs"
-  on public.briefs for update using (auth.uid() = user_id);
+  on public.briefs for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 create policy "Users can delete their own briefs"
   on public.briefs for delete using (auth.uid() = user_id);

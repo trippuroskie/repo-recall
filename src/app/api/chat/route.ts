@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { getBrief, addChatMessage, trackUsage } from "@/lib/store";
+import { getBrief, addChatMessage, trackUsage, rollbackUsage } from "@/lib/store";
 import { buildBriefContext, CHAT_SYSTEM_PROMPT } from "@/lib/prompts";
 import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
@@ -62,28 +62,56 @@ export async function POST(request: NextRequest) {
     };
     await addChatMessage(briefId, userChatMessage, user.id);
 
-    const response = await fetch(
-      "https://openrouter.ai/api/v1/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://reporecall.dev",
-          "X-Title": "RepoRecall",
-        },
-        body: JSON.stringify({
-          model: "anthropic/claude-sonnet-4",
-          stream: true,
-          messages: [
-            { role: "system", content: systemMessage },
-            ...messages,
-          ],
+    // Reserve chat usage quota before the expensive AI call
+    const usageId = await trackUsage(user.id, "chat_message");
+
+    // Abort upstream request after 60 seconds to prevent hung connections
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 60_000);
+
+    let response: Response;
+    try {
+      response = await fetch(
+        "https://openrouter.ai/api/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://reporecall.dev",
+            "X-Title": "RepoRecall",
+          },
+          body: JSON.stringify({
+            model: "anthropic/claude-sonnet-4",
+            stream: true,
+            messages: [
+              { role: "system", content: systemMessage },
+              ...messages,
+            ],
+          }),
+          signal: controller.signal,
+        }
+      );
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      if (usageId) await rollbackUsage(usageId);
+      const isAbort =
+        fetchErr instanceof Error && fetchErr.name === "AbortError";
+      return new Response(
+        JSON.stringify({
+          error: isAbort
+            ? "Request timed out. Please try again."
+            : "Failed to connect to AI service",
         }),
-      }
-    );
+        { status: isAbort ? 504 : 502, headers: { "Content-Type": "application/json" } }
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
 
     if (!response.ok) {
+      // Roll back usage reservation on upstream failure
+      if (usageId) await rollbackUsage(usageId);
       const errorText = await response.text();
       console.error("OpenRouter error:", errorText);
       return new Response(
@@ -144,12 +172,11 @@ export async function POST(request: NextRequest) {
           };
           await addChatMessage(currentBriefId, assistantMessage, userId);
 
-          // Track usage
-          await trackUsage(userId, "chat_message");
-
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (err) {
+          // Roll back usage reservation on stream failure
+          if (usageId) await rollbackUsage(usageId);
           console.error("Stream error:", err);
           controller.error(err);
         }

@@ -8,7 +8,7 @@ import {
   fetchFileContent,
 } from "@/lib/github";
 import { generateBrief } from "@/lib/analysis";
-import { saveBrief, trackUsage, getGitHubToken } from "@/lib/store";
+import { saveBrief, trackUsage, rollbackUsage, getGitHubToken } from "@/lib/store";
 import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
 
@@ -50,37 +50,56 @@ export async function POST(request: NextRequest) {
     const authToken =
       token || (await getGitHubToken(user.id)) || undefined;
 
-    // Fetch all data in parallel
-    const [repoInfo, files, prs, commits] = await Promise.all([
-      fetchRepoInfo(owner, repo, authToken),
-      fetchRepoTree(owner, repo, authToken),
-      fetchPRs(owner, repo, authToken),
-      fetchCommits(owner, repo, authToken),
-    ]);
+    // Fetch repo info first to check private-repo entitlement
+    const repoInfo = await fetchRepoInfo(owner, repo, authToken);
 
-    // Fetch key files
-    const [packageJson, readme] = await Promise.all([
-      fetchFileContent(owner, repo, "package.json", authToken),
-      fetchFileContent(owner, repo, "README.md", authToken),
-    ]);
+    if (repoInfo.isPrivate && !limits.canAccessPrivateRepos) {
+      return NextResponse.json(
+        {
+          error:
+            "Private repo analysis requires a Pro plan. Upgrade to analyze private repositories.",
+          code: "PLAN_LIMIT_EXCEEDED",
+        },
+        { status: 403 }
+      );
+    }
 
-    // Generate the brief
-    const brief = generateBrief(
-      repoInfo,
-      files,
-      prs,
-      commits,
-      packageJson,
-      readme
-    );
+    // Reserve usage quota before doing expensive work
+    const usageId = await trackUsage(user.id, "analyze", `${owner}/${repo}`);
 
-    // Save to database
-    await saveBrief(brief, user.id);
+    try {
+      // Fetch remaining data in parallel
+      const [files, prs, commits] = await Promise.all([
+        fetchRepoTree(owner, repo, authToken),
+        fetchPRs(owner, repo, authToken),
+        fetchCommits(owner, repo, authToken),
+      ]);
 
-    // Track usage
-    await trackUsage(user.id, "analyze", `${owner}/${repo}`);
+      // Fetch key files
+      const [packageJson, readme] = await Promise.all([
+        fetchFileContent(owner, repo, "package.json", authToken),
+        fetchFileContent(owner, repo, "README.md", authToken),
+      ]);
 
-    return NextResponse.json({ brief });
+      // Generate the brief
+      const brief = generateBrief(
+        repoInfo,
+        files,
+        prs,
+        commits,
+        packageJson,
+        readme
+      );
+
+      // Save to database
+      await saveBrief(brief, user.id);
+
+      return NextResponse.json({ brief });
+    } catch (innerError) {
+      // Roll back usage reservation on failure
+      if (usageId) await rollbackUsage(usageId);
+      throw innerError;
+    }
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Analysis failed";
