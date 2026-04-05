@@ -1,7 +1,8 @@
-import type { ProjectBrief } from "./types";
+import type { ProjectBrief, ChatMessage } from "./types";
 
 // Simple in-memory store for MVP (replace with DB later)
 const briefs = new Map<string, ProjectBrief>();
+const chatHistory = new Map<string, ChatMessage[]>();
 
 export function saveBrief(brief: ProjectBrief): void {
   briefs.set(brief.id, brief);
@@ -19,5 +20,20 @@ export function getAllBriefs(): ProjectBrief[] {
 }
 
 export function deleteBrief(id: string): boolean {
+  chatHistory.delete(id);
   return briefs.delete(id);
+}
+
+export function getChatMessages(briefId: string): ChatMessage[] {
+  return chatHistory.get(briefId) || [];
+}
+
+export function addChatMessage(briefId: string, message: ChatMessage): void {
+  const messages = chatHistory.get(briefId) || [];
+  messages.push(message);
+  chatHistory.set(briefId, messages);
+}
+
+export function clearChatMessages(briefId: string): void {
+  chatHistory.delete(briefId);
 }

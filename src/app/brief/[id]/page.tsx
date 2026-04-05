@@ -9,6 +9,8 @@ import { FeaturesSection } from "@/components/sections/FeaturesSection";
 import { BusinessSection } from "@/components/sections/BusinessSection";
 import { TimelineSection } from "@/components/sections/TimelineSection";
 import { EntrypointsSection } from "@/components/sections/EntrypointsSection";
+import { CodemapSection } from "@/components/sections/CodemapSection";
+import { ChatPanel } from "@/components/ChatPanel";
 import type { ProjectBrief } from "@/lib/types";
 import {
   ExternalLink,
@@ -124,8 +126,11 @@ export default function BriefPage() {
     );
   }
 
+  const isCodemap = activeSection === "codemap";
+
   const sectionComponents: Record<string, React.ReactNode> = {
     overview: <OverviewSection brief={brief} />,
+    codemap: <CodemapSection brief={brief} />,
     architecture: <ArchitectureSection brief={brief} />,
     features: <FeaturesSection brief={brief} />,
     business: <BusinessSection brief={brief} />,
@@ -136,6 +141,7 @@ export default function BriefPage() {
   // Breadcrumb labels
   const sectionLabels: Record<string, string> = {
     overview: "Overview",
+    codemap: "Codemap",
     architecture: "Architecture",
     features: "Features",
     business: "Business Context",
@@ -172,20 +178,20 @@ export default function BriefPage() {
         ref={contentRef}
         style={{
           flex: 1,
-          overflowY: "auto",
+          overflowY: isCodemap ? "hidden" : "auto",
           display: "flex",
-          justifyContent: "center",
+          justifyContent: isCodemap ? "stretch" : "center",
         }}
       >
         <div
           style={{
             width: "100%",
-            maxWidth: 760,
-            padding: "32px 48px 80px",
+            maxWidth: isCodemap ? "none" : 760,
+            padding: isCodemap ? "0" : "32px 48px 80px",
           }}
         >
-          {/* Breadcrumb */}
-          <div
+          {/* Breadcrumb (hidden in codemap mode) */}
+          {!isCodemap && <div
             style={{
               display: "flex",
               alignItems: "center",
@@ -242,31 +248,36 @@ export default function BriefPage() {
                 GitHub
               </a>
             </div>
-          </div>
+          </div>}
 
           {/* Mobile section nav */}
-          <div className="flex gap-2 overflow-x-auto pb-4 mb-6 md:hidden">
-            {Object.entries(sectionLabels).map(([id, label]) => (
-              <button
-                key={id}
-                onClick={() => handleNav(id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
-                  activeSection === id
-                    ? "bg-surface text-foreground"
-                    : "text-foreground-secondary hover:bg-surface-hover"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {!isCodemap && (
+            <div className="flex gap-2 overflow-x-auto pb-4 mb-6 md:hidden">
+              {Object.entries(sectionLabels).map(([id, label]) => (
+                <button
+                  key={id}
+                  onClick={() => handleNav(id)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap transition-colors ${
+                    activeSection === id
+                      ? "bg-surface text-foreground"
+                      : "text-foreground-secondary hover:bg-surface-hover"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Section content */}
-          <div className="max-w-3xl">
+          <div className={isCodemap ? "" : "max-w-3xl"} style={isCodemap ? { height: "100%" } : undefined}>
             {sectionComponents[activeSection]}
           </div>
         </div>
       </div>
+
+      {/* Chat */}
+      <ChatPanel brief={brief} />
     </div>
   );
 }
