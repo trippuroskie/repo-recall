@@ -9,10 +9,11 @@ import type {
   Entrypoint,
 } from "./types";
 
-// Infer the tech stack from file extensions and config files
-function inferStack(files: FileNode[]): string[] {
+// Infer the tech stack from file extensions, config files, and dependencies
+function inferStack(files: FileNode[], deps: Record<string, string> = {}): string[] {
   const stack: Set<string> = new Set();
   const fileNames = new Set(files.map((f) => f.name));
+  const filePaths = new Set(files.map((f) => f.path.toLowerCase()));
   const extensions = new Set(
     files
       .filter((f) => f.type === "file")
@@ -20,14 +21,33 @@ function inferStack(files: FileNode[]): string[] {
       .filter(Boolean)
   );
 
-  // Frameworks
-  if (fileNames.has("next.config.js") || fileNames.has("next.config.ts") || fileNames.has("next.config.mjs"))
+  const hasDep = (...names: string[]) => names.some((n) => n in deps);
+
+  // Frameworks (file-based detection)
+  if (fileNames.has("next.config.js") || fileNames.has("next.config.ts") || fileNames.has("next.config.mjs") || hasDep("next"))
     stack.add("Next.js");
-  if (fileNames.has("nuxt.config.ts") || fileNames.has("nuxt.config.js")) stack.add("Nuxt");
-  if (fileNames.has("svelte.config.js")) stack.add("SvelteKit");
-  if (fileNames.has("astro.config.mjs")) stack.add("Astro");
-  if (fileNames.has("remix.config.js")) stack.add("Remix");
-  if (fileNames.has("vite.config.ts") || fileNames.has("vite.config.js")) stack.add("Vite");
+  if (fileNames.has("nuxt.config.ts") || fileNames.has("nuxt.config.js") || hasDep("nuxt"))
+    stack.add("Nuxt");
+  if (fileNames.has("svelte.config.js") || hasDep("svelte", "@sveltejs/kit"))
+    stack.add("SvelteKit");
+  if (fileNames.has("astro.config.mjs") || hasDep("astro")) stack.add("Astro");
+  if (fileNames.has("remix.config.js") || hasDep("@remix-run/react"))
+    stack.add("Remix");
+  if (fileNames.has("vite.config.ts") || fileNames.has("vite.config.js") || hasDep("vite"))
+    stack.add("Vite");
+
+  // Dependency-based framework detection
+  if (hasDep("express")) stack.add("Express");
+  if (hasDep("fastify")) stack.add("Fastify");
+  if (hasDep("hono")) stack.add("Hono");
+  if (hasDep("koa")) stack.add("Koa");
+  if (hasDep("@nestjs/core")) stack.add("NestJS");
+  if (hasDep("gatsby")) stack.add("Gatsby");
+  if (hasDep("@angular/core")) stack.add("Angular");
+  if (hasDep("vue", "vue-router")) stack.add("Vue");
+  if (hasDep("electron")) stack.add("Electron");
+  if (hasDep("react-native")) stack.add("React Native");
+  if (hasDep("expo")) stack.add("Expo");
 
   // Languages
   if (extensions.has("ts") || extensions.has("tsx")) stack.add("TypeScript");
@@ -36,29 +56,66 @@ function inferStack(files: FileNode[]): string[] {
   if (extensions.has("go")) stack.add("Go");
   if (extensions.has("rs")) stack.add("Rust");
   if (extensions.has("rb")) stack.add("Ruby");
-  if (extensions.has("java")) stack.add("Java");
+  if (extensions.has("java") || extensions.has("kt")) stack.add("Java");
   if (extensions.has("swift")) stack.add("Swift");
+  if (extensions.has("cs")) stack.add("C#");
+  if (extensions.has("php")) stack.add("PHP");
+  if (extensions.has("ex") || extensions.has("exs")) stack.add("Elixir");
+
+  // Python frameworks
+  if (filePaths.has("manage.py") || files.some((f) => f.path.includes("django")))
+    stack.add("Django");
+  if (hasDep("flask") || files.some((f) => f.name === "flask" || f.path.includes("flask/")))
+    stack.add("Flask");
+  if (fileNames.has("requirements.txt") || fileNames.has("pyproject.toml") || fileNames.has("setup.py"))
+    stack.add("Python");
+
+  // Ruby frameworks
+  if (fileNames.has("Gemfile")) stack.add("Ruby");
+  if (files.some((f) => f.path.includes("config/routes.rb")))
+    stack.add("Rails");
 
   // Frontend
-  if (files.some((f) => f.path.includes("react") || f.name === "jsx"))
+  if (hasDep("react", "react-dom") || files.some((f) => f.path.includes("react")))
     stack.add("React");
-  if (fileNames.has("tailwind.config.ts") || fileNames.has("tailwind.config.js"))
+  if (fileNames.has("tailwind.config.ts") || fileNames.has("tailwind.config.js") || hasDep("tailwindcss"))
     stack.add("Tailwind CSS");
+  if (hasDep("@mui/material", "@material-ui/core")) stack.add("Material UI");
+  if (hasDep("@chakra-ui/react")) stack.add("Chakra UI");
+  if (hasDep("shadcn-ui") || files.some((f) => f.path.includes("components/ui/")))
+    stack.add("shadcn/ui");
 
   // Backend / DB
   if (fileNames.has("prisma") || files.some((f) => f.path.includes("prisma/")))
     stack.add("Prisma");
-  if (fileNames.has("drizzle.config.ts")) stack.add("Drizzle");
-  if (files.some((f) => f.path.includes("supabase/"))) stack.add("Supabase");
-  if (fileNames.has("firebase.json") || files.some((f) => f.path.includes("firebase")))
+  if (fileNames.has("drizzle.config.ts") || hasDep("drizzle-orm")) stack.add("Drizzle");
+  if (files.some((f) => f.path.includes("supabase/")) || hasDep("@supabase/supabase-js"))
+    stack.add("Supabase");
+  if (fileNames.has("firebase.json") || files.some((f) => f.path.includes("firebase")) || hasDep("firebase", "firebase-admin"))
     stack.add("Firebase");
+  if (hasDep("mongoose", "mongodb")) stack.add("MongoDB");
+  if (hasDep("pg", "postgres", "@neondatabase/serverless")) stack.add("PostgreSQL");
+  if (hasDep("redis", "ioredis")) stack.add("Redis");
+  if (hasDep("typeorm")) stack.add("TypeORM");
+  if (hasDep("sequelize")) stack.add("Sequelize");
+
+  // Testing
+  if (hasDep("jest", "@jest/core")) stack.add("Jest");
+  if (hasDep("vitest")) stack.add("Vitest");
+  if (hasDep("@playwright/test", "playwright")) stack.add("Playwright");
+  if (hasDep("cypress")) stack.add("Cypress");
 
   // Infra
-  if (fileNames.has("Dockerfile") || fileNames.has("docker-compose.yml"))
+  if (fileNames.has("Dockerfile") || fileNames.has("docker-compose.yml") || fileNames.has("docker-compose.yaml"))
     stack.add("Docker");
   if (fileNames.has("vercel.json") || fileNames.has(".vercel")) stack.add("Vercel");
   if (files.some((f) => f.path.includes(".github/workflows/")))
     stack.add("GitHub Actions");
+  if (fileNames.has("Makefile")) stack.add("Make");
+  if (fileNames.has("terraform.tf") || files.some((f) => f.path.includes(".tf")))
+    stack.add("Terraform");
+  if (fileNames.has("Cargo.toml")) stack.add("Rust");
+  if (fileNames.has("go.mod")) stack.add("Go");
 
   return Array.from(stack);
 }
@@ -340,8 +397,8 @@ export function generateBrief(
   packageJson: string | null,
   readmeContent: string | null
 ): ProjectBrief {
-  const stack = inferStack(files);
   const dependencies = parseDependencies(packageJson);
+  const stack = inferStack(files, dependencies);
   const keyModules = identifyKeyModules(files);
   const apis = detectAPIs(files);
   const features = inferFeatures(files, prs);
@@ -368,6 +425,12 @@ export function generateBrief(
       likelyUser: inferLikelyUser(features, repoInfo),
       valueProposition: inferValueProp(repoInfo, features, readmeContent),
       majorFlows: inferMajorFlows(files, apis),
+      stats: {
+        totalFiles: files.filter((f) => f.type === "file").length,
+        totalPRs: prs.length,
+        totalCommits: commits.length,
+        topLanguages: inferTopLanguages(files),
+      },
     },
 
     architecture: {
@@ -392,6 +455,26 @@ export function generateBrief(
     timeline,
     entrypoints,
   };
+}
+
+function inferTopLanguages(files: FileNode[]): string[] {
+  const extMap: Record<string, string> = {
+    ts: "TypeScript", tsx: "TypeScript", js: "JavaScript", jsx: "JavaScript",
+    py: "Python", go: "Go", rs: "Rust", rb: "Ruby", java: "Java", kt: "Kotlin",
+    swift: "Swift", cs: "C#", php: "PHP", ex: "Elixir", exs: "Elixir",
+    css: "CSS", scss: "SCSS", html: "HTML", vue: "Vue", svelte: "Svelte",
+  };
+  const counts = new Map<string, number>();
+  for (const f of files) {
+    if (f.type !== "file") continue;
+    const ext = f.name.split(".").pop()?.toLowerCase();
+    const lang = ext ? extMap[ext] : undefined;
+    if (lang) counts.set(lang, (counts.get(lang) || 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([lang]) => lang);
 }
 
 function inferLikelyUser(

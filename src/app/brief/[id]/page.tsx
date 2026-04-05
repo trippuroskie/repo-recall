@@ -14,6 +14,8 @@ import {
   ExternalLink,
   Clock,
   Loader2,
+  RefreshCw,
+  Download,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -26,6 +28,7 @@ export default function BriefPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,6 +66,34 @@ export default function BriefPage() {
     },
     [router]
   );
+
+  const handleReanalyze = useCallback(async () => {
+    if (!brief || reanalyzing) return;
+    setReanalyzing(true);
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl: `${brief.repoInfo.owner}/${brief.repoInfo.name}` }),
+      });
+      if (!res.ok) throw new Error("Re-analysis failed");
+      const data = await res.json();
+      router.push(`/brief/${data.brief.id}`);
+    } catch {
+      setReanalyzing(false);
+    }
+  }, [brief, reanalyzing, router]);
+
+  const handleExport = useCallback(() => {
+    if (!brief) return;
+    const blob = new Blob([JSON.stringify(brief, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${brief.repoInfo.owner}-${brief.repoInfo.name}-brief.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [brief]);
 
   if (loading) {
     return (
@@ -177,13 +208,30 @@ export default function BriefPage() {
             <span style={{ color: "rgb(100,99,97)" }}>
               {sectionLabels[activeSection] || "Overview"}
             </span>
-            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
               <span className="flex items-center gap-1.5 text-xs text-foreground-secondary">
                 <Clock size={12} />
                 {formatDistanceToNow(new Date(brief.generatedAt), {
                   addSuffix: true,
                 })}
               </span>
+              <button
+                onClick={handleReanalyze}
+                disabled={reanalyzing}
+                className="flex items-center gap-1.5 text-xs text-foreground-secondary hover:text-foreground transition-colors disabled:opacity-40"
+                title="Re-analyze this repository"
+              >
+                <RefreshCw size={12} className={reanalyzing ? "animate-spin" : ""} />
+                {reanalyzing ? "Analyzing…" : "Refresh"}
+              </button>
+              <button
+                onClick={handleExport}
+                className="flex items-center gap-1.5 text-xs text-foreground-secondary hover:text-foreground transition-colors"
+                title="Export brief as JSON"
+              >
+                <Download size={12} />
+                Export
+              </button>
               <a
                 href={brief.repoInfo.url}
                 target="_blank"

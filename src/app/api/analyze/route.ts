@@ -42,7 +42,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ brief });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Analysis failed";
-    const status = message.includes("Not Found") ? 404 : 500;
-    return NextResponse.json({ error: message }, { status });
+    let status = 500;
+    let userMessage = message;
+
+    if (message.includes("Not Found")) {
+      status = 404;
+      userMessage = "Repository not found. Check the URL or add a personal access token for private repos.";
+    } else if (message.includes("rate limit") || message.includes("API rate limit")) {
+      status = 429;
+      userMessage = "GitHub API rate limit exceeded. Add a personal access token to increase your limit (60 → 5,000 requests/hour).";
+    } else if (message.includes("Bad credentials")) {
+      status = 401;
+      userMessage = "Invalid GitHub token. Please check your personal access token and try again.";
+    } else if (message.includes("403") || message.includes("Forbidden")) {
+      status = 403;
+      userMessage = "Access denied. This may be a private repo — try adding a personal access token with repo scope.";
+    } else if (message.includes("ETIMEDOUT") || message.includes("ECONNREFUSED") || message.includes("fetch failed")) {
+      status = 502;
+      userMessage = "Could not connect to GitHub. Please check your network and try again.";
+    }
+
+    return NextResponse.json({ error: userMessage }, { status });
   }
 }

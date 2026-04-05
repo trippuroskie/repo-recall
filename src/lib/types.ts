@@ -86,6 +86,12 @@ export interface ProjectBrief {
     likelyUser: string;
     valueProposition: string;
     majorFlows: string[];
+    stats: {
+      totalFiles: number;
+      totalPRs: number;
+      totalCommits: number;
+      topLanguages: string[];
+    };
   };
 
   // How it is built
