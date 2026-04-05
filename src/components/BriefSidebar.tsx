@@ -118,9 +118,22 @@ function IconPlus() {
   );
 }
 
+function IconCodemap() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="9" y="1.5" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="1.5" y="9" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="9" y="9" width="5.5" height="5.5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M4.25 4h0M11.75 4h0M4.25 11.5h0M11.75 11.5h0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ─── Section definitions ───
 const briefSections = [
   { id: "overview", icon: IconFileText, label: "Overview" },
+  { id: "codemap", icon: IconCodemap, label: "Codemap" },
   { id: "features", icon: IconLayers, label: "Features" },
   { id: "architecture", icon: IconBox, label: "Architecture" },
   { id: "timeline", icon: IconClock, label: "Timeline" },
