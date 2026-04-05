@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ChartLightbox } from "./ChartLightbox";
 
 let mermaidInitialized = false;
 
@@ -14,6 +15,7 @@ export function MermaidChart({
   const containerRef = useRef<HTMLDivElement>(null);
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState(false);
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const idRef = useRef(`mermaid-${Math.random().toString(36).slice(2, 9)}`);
 
   useEffect(() => {
@@ -73,21 +75,53 @@ export function MermaidChart({
     };
   }, [chart]);
 
-  if (error) return null;
+  if (error || !svg) return null;
 
   return (
-    <div
-      ref={containerRef}
-      className={`mermaid-container ${className}`}
-      style={{
-        backgroundColor: "rgba(55,53,47,0.02)",
-        border: "1px solid rgba(55,53,47,0.06)",
-        borderRadius: 8,
-        padding: "20px 16px",
-        overflow: "auto",
-        marginBottom: 16,
-      }}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <>
+      <div
+        ref={containerRef}
+        className={`mermaid-container ${className}`}
+        onClick={() => setLightboxOpen(true)}
+        style={{
+          backgroundColor: "rgba(55,53,47,0.02)",
+          border: "1px solid rgba(55,53,47,0.06)",
+          borderRadius: 8,
+          padding: "20px 16px",
+          overflow: "auto",
+          marginBottom: 16,
+          cursor: "pointer",
+          position: "relative",
+        }}
+      >
+        <div dangerouslySetInnerHTML={{ __html: svg }} />
+        {/* Expand hint */}
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            width: 28,
+            height: 28,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: 6,
+            backgroundColor: "rgba(55,53,47,0.04)",
+            color: "rgb(160,159,156)",
+            opacity: 0.6,
+            transition: "opacity 0.15s",
+          }}
+          className="expand-hint"
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+            <path d="M10 2h4v4M6 14H2v-4M14 2L9.5 6.5M2 14l4.5-4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+      </div>
+      {lightboxOpen && (
+        <ChartLightbox svg={svg} onClose={() => setLightboxOpen(false)} />
+      )}
+    </>
   );
 }

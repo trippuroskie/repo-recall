@@ -158,7 +158,7 @@ export function BriefSidebar({
   // Safety guard — brief may be undefined during hot-reload
   if (!brief?.repoInfo) return null;
 
-  // Collapsed state — just show toggle
+  // Collapsed state — show icons only
   if (collapsed) {
     return (
       <div
@@ -170,15 +170,19 @@ export function BriefSidebar({
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          paddingTop: 12,
+          paddingTop: 10,
           flexShrink: 0,
+          overflow: "hidden",
         }}
       >
+        {/* Toggle */}
         <button
           onClick={onToggleCollapse}
+          title="Expand sidebar"
+          className="sidebar-btn-subtle"
           style={{
-            width: 28,
-            height: 28,
+            width: 32,
+            height: 32,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -187,10 +191,115 @@ export function BriefSidebar({
             cursor: "pointer",
             borderRadius: 4,
             color: "rgb(120,119,116)",
+            marginBottom: 8,
           }}
         >
           <IconSidebar />
         </button>
+
+        {/* Repos */}
+        {allBriefs.map((b) => {
+          const isActive = b.id === brief.id;
+          return (
+            <button
+              key={b.id}
+              onClick={() => onRepoSelect?.(b.id)}
+              title={b.repoInfo.name}
+              className="sidebar-btn-hover"
+              style={{
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: isActive ? "rgba(55,53,47,0.06)" : "none",
+                border: "none",
+                cursor: "pointer",
+                borderRadius: 4,
+                color: isActive ? "rgb(55,53,47)" : "rgb(160,159,156)",
+              }}
+            >
+              <IconGitHub />
+            </button>
+          );
+        })}
+        {allBriefs.length === 0 && (
+          <button
+            title={brief.repoInfo.name}
+            className="sidebar-btn-hover"
+            style={{
+              width: 32,
+              height: 32,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "rgba(55,53,47,0.06)",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: 4,
+              color: "rgb(55,53,47)",
+            }}
+          >
+            <IconGitHub />
+          </button>
+        )}
+        <button
+          onClick={onConnectNew}
+          title="Connect repo"
+          className="sidebar-btn-hover"
+          style={{
+            width: 32,
+            height: 32,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: 4,
+            color: "rgb(160,159,156)",
+          }}
+        >
+          <IconPlus />
+        </button>
+
+        {/* Divider */}
+        <div
+          style={{
+            width: 20,
+            height: 1,
+            backgroundColor: "rgba(55,53,47,0.09)",
+            margin: "6px 0",
+          }}
+        />
+
+        {/* Brief sections */}
+        {briefSections.map((s) => {
+          const Icon = s.icon;
+          const isActive = activeSection === s.id;
+          return (
+            <button
+              key={s.id}
+              onClick={() => onSectionChange(s.id)}
+              title={s.label}
+              className="sidebar-btn-hover"
+              style={{
+                width: 32,
+                height: 32,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: isActive ? "rgba(55,53,47,0.06)" : "none",
+                border: "none",
+                cursor: "pointer",
+                borderRadius: 4,
+                color: isActive ? "rgb(55,53,47)" : "rgb(160,159,156)",
+              }}
+            >
+              <Icon />
+            </button>
+          );
+        })}
       </div>
     );
   }

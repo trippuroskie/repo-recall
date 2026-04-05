@@ -9,6 +9,42 @@ import type {
   Entrypoint,
 } from "./types";
 
+// Strip HTML tags and comments from a string
+function stripHtml(str: string): string {
+  return str
+    .replace(/<!--[\s\S]*?-->/g, "")       // HTML comments
+    .replace(/<[^>]+>/g, "")                // HTML tags
+    .replace(/&nbsp;/g, " ")               // common entities
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s{2,}/g, " ")               // collapse whitespace
+    .trim();
+}
+
+// Extract a clean summary from README content
+function extractReadmeSummary(readme: string): string {
+  // Split into lines, strip HTML/markdown, filter to meaningful prose
+  const lines = readme
+    .split("\n")
+    .map((l) => stripHtml(l.replace(/[#*_`\[\]()!]/g, "")).trim())
+    .filter((l) => {
+      if (l.length < 20) return false;                    // skip short nav-like fragments
+      if (/^(http|www\.|\/|\.\.)/i.test(l)) return false; // skip bare URLs/paths
+      if (/^[\w\s·»|>-]{0,50}$/.test(l)) return false;   // skip nav separators
+      return true;
+    });
+
+  // Take the first few meaningful lines up to ~500 chars
+  let summary = "";
+  for (const line of lines) {
+    if ((summary + " " + line).length > 500) break;
+    summary = summary ? summary + " " + line : line;
+  }
+
+  return summary || readme.replace(/[#*_`]/g, "").slice(0, 300).trim();
+}
+
 // Infer the tech stack from file extensions, config files, and dependencies
 function inferStack(files: FileNode[], deps: Record<string, string> = {}): string[] {
   const stack: Set<string> = new Set();
@@ -409,7 +445,7 @@ export function generateBrief(
   const entrypoints = recommendEntrypoints(files, features);
 
   const readmeSummary = readmeContent
-    ? readmeContent.slice(0, 500).replace(/[#*_`]/g, "").trim()
+    ? extractReadmeSummary(readmeContent)
     : null;
 
   return {
@@ -507,8 +543,9 @@ function inferValueProp(
   if (readme) {
     const firstLine = readme
       .split("\n")
-      .find((l) => l.trim() && !l.startsWith("#"));
-    if (firstLine) return firstLine.replace(/[*_`]/g, "").trim().slice(0, 200);
+      .map((l) => stripHtml(l.replace(/[*_`#]/g, "")).trim())
+      .find((l) => l.length > 10);
+    if (firstLine) return firstLine.slice(0, 200);
   }
   if (repo.description) return repo.description;
   return `A ${features.length}-feature ${repo.language || ""} application`.trim();
