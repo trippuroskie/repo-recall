@@ -184,7 +184,7 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
                 <div
                   key={pkg}
                   className={`grid grid-cols-[1fr_auto] items-center px-4 py-2 ${
-                    i > 0 ? "border-t border-border" : "border-t border-border"
+                    i > 0 ? "border-t border-border" : ""
                   } hover:bg-surface-hover transition-colors`}
                 >
                   <code className="text-sm font-mono text-foreground">

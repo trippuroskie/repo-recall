@@ -543,7 +543,8 @@ function inferValueProp(
   if (readme) {
     const firstLine = readme
       .split("\n")
-      .map((l) => stripHtml(l.replace(/[*_`#]/g, "")).trim())
+      .filter((l) => !l.trim().startsWith("#"))           // skip headings
+      .map((l) => stripHtml(l.replace(/[*_`]/g, "")).trim())
       .find((l) => l.length > 10);
     if (firstLine) return firstLine.slice(0, 200);
   }

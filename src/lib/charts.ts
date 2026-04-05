@@ -95,13 +95,14 @@ export function buildStackLayersChart(brief: ProjectBrief): string {
   const infra: string[] = [];
 
   const frontendKw = ["react", "vue", "svelte", "angular", "next", "nuxt", "remix", "astro", "tailwind", "css", "vite"];
-  const backendKw = ["express", "fastify", "hono", "node", "python", "go", "rust", "ruby", "java", "api", "graphql"];
+  const backendKw = ["express", "fastify", "hono", "node", "python", "go", "rust", "ruby", "api", "graphql"];
   const dataKw = ["prisma", "drizzle", "supabase", "firebase", "mongo", "postgres", "redis", "sql"];
   const infraKw = ["docker", "vercel", "aws", "github actions", "ci", "terraform", "k8s"];
 
   for (const tech of stack) {
     const t = tech.toLowerCase();
-    if (frontendKw.some((k) => t.includes(k))) frontend.push(tech);
+    if (t === "java" || t === "kotlin") backend.push(tech);
+    else if (frontendKw.some((k) => t.includes(k))) frontend.push(tech);
     else if (dataKw.some((k) => t.includes(k))) data.push(tech);
     else if (infraKw.some((k) => t.includes(k))) infra.push(tech);
     else if (backendKw.some((k) => t.includes(k))) backend.push(tech);
@@ -121,11 +122,11 @@ export function buildStackLayersChart(brief: ProjectBrief): string {
     }
     if (notableBack.some((k) => p.includes(k))) {
       const name = pkg.replace(/^@/, "").split("/").pop() || pkg;
-      if (!backend.includes(name)) backend.push(name);
+      if (!backend.some((b) => b.toLowerCase() === name.toLowerCase())) backend.push(name);
     }
     if (notableData.some((k) => p.includes(k))) {
       const name = pkg.replace(/^@/, "").split("/").pop() || pkg;
-      if (!data.includes(name)) data.push(name);
+      if (!data.some((d) => d.toLowerCase() === name.toLowerCase())) data.push(name);
     }
   }
 

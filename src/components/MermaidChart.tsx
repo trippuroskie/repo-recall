@@ -75,7 +75,23 @@ export function MermaidChart({
     };
   }, [chart]);
 
-  if (error || !svg) return null;
+  if (error) return null;
+
+  if (!svg) {
+    return (
+      <div
+        className={`mermaid-container ${className}`}
+        style={{
+          backgroundColor: "rgba(55,53,47,0.02)",
+          border: "1px solid rgba(55,53,47,0.06)",
+          borderRadius: 8,
+          padding: "20px 16px",
+          minHeight: 120,
+          marginBottom: 16,
+        }}
+      />
+    );
+  }
 
   return (
     <>

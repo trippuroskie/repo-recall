@@ -224,9 +224,8 @@ export function BriefSidebar({
           );
         })}
         {allBriefs.length === 0 && (
-          <button
+          <div
             title={brief.repoInfo.name}
-            className="sidebar-btn-hover"
             style={{
               width: 32,
               height: 32,
@@ -234,14 +233,12 @@ export function BriefSidebar({
               alignItems: "center",
               justifyContent: "center",
               background: "rgba(55,53,47,0.06)",
-              border: "none",
-              cursor: "pointer",
               borderRadius: 4,
               color: "rgb(55,53,47)",
             }}
           >
             <IconGitHub />
-          </button>
+          </div>
         )}
         <button
           onClick={onConnectNew}
