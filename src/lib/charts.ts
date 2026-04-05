@@ -84,6 +84,118 @@ export function buildArchitectureChart(brief: ProjectBrief): string {
   return chart;
 }
 
+export function buildStackLayersChart(brief: ProjectBrief): string {
+  const stack = brief.architecture.stack;
+  const deps = brief.architecture.dependencies;
+  if (stack.length === 0) return "";
+
+  const frontend: string[] = [];
+  const backend: string[] = [];
+  const data: string[] = [];
+  const infra: string[] = [];
+
+  const frontendKw = ["react", "vue", "svelte", "angular", "next", "nuxt", "remix", "astro", "tailwind", "css", "vite"];
+  const backendKw = ["express", "fastify", "hono", "node", "python", "go", "rust", "ruby", "api", "graphql"];
+  const dataKw = ["prisma", "drizzle", "supabase", "firebase", "mongo", "postgres", "redis", "sql"];
+  const infraKw = ["docker", "vercel", "aws", "github actions", "ci", "terraform", "k8s"];
+
+  for (const tech of stack) {
+    const t = tech.toLowerCase();
+    if (t === "java" || t === "kotlin") backend.push(tech);
+    else if (frontendKw.some((k) => t.includes(k))) frontend.push(tech);
+    else if (dataKw.some((k) => t.includes(k))) data.push(tech);
+    else if (infraKw.some((k) => t.includes(k))) infra.push(tech);
+    else if (backendKw.some((k) => t.includes(k))) backend.push(tech);
+    else frontend.push(tech); // default bucket
+  }
+
+  // Also pull key deps
+  const notableUi = ["react-dom", "next", "@tanstack/react-query", "zustand", "jotai", "redux"];
+  const notableBack = ["@trpc/server", "express", "fastify", "hono", "@nestjs/core"];
+  const notableData = ["@prisma/client", "drizzle-orm", "@supabase/supabase-js", "mongoose", "ioredis"];
+
+  for (const [pkg] of Object.entries(deps)) {
+    const p = pkg.toLowerCase();
+    if (notableUi.some((k) => p.includes(k)) && !frontend.some((f) => f.toLowerCase().includes(p))) {
+      const name = pkg.replace(/^@/, "").split("/").pop() || pkg;
+      if (!frontend.includes(name)) frontend.push(name);
+    }
+    if (notableBack.some((k) => p.includes(k))) {
+      const name = pkg.replace(/^@/, "").split("/").pop() || pkg;
+      if (!backend.some((b) => b.toLowerCase() === name.toLowerCase())) backend.push(name);
+    }
+    if (notableData.some((k) => p.includes(k))) {
+      const name = pkg.replace(/^@/, "").split("/").pop() || pkg;
+      if (!data.some((d) => d.toLowerCase() === name.toLowerCase())) data.push(name);
+    }
+  }
+
+  let chart = "graph TD\n";
+  const layers: [string, string[]][] = [
+    ["Frontend", frontend],
+    ["Backend / API", backend],
+    ["Data", data],
+    ["Infrastructure", infra],
+  ];
+
+  const filledLayers = layers.filter(([, items]) => items.length > 0);
+  if (filledLayers.length < 2) return "";
+
+  const layerIds: string[] = [];
+  let nid = 0;
+
+  for (const [label, items] of filledLayers) {
+    const lid = `SL${nid++}`;
+    layerIds.push(lid);
+    chart += `  subgraph ${lid}["${label}"]\n`;
+    chart += `    direction LR\n`;
+    for (const item of items.slice(0, 6)) {
+      chart += `    SN${nid}["${sanitize(item)}"]\n`;
+      nid++;
+    }
+    chart += `  end\n`;
+  }
+
+  for (let i = 0; i < layerIds.length - 1; i++) {
+    chart += `  ${layerIds[i]} --> ${layerIds[i + 1]}\n`;
+  }
+
+  return chart;
+}
+
+export function buildDependencyChart(brief: ProjectBrief): string {
+  const integrations = brief.architecture.integrations;
+  const apis = brief.architecture.apis.slice(0, 8);
+
+  if (integrations.length === 0 && apis.length === 0) return "";
+
+  let chart = "graph LR\n";
+  chart += `  APP["${sanitize(brief.repoInfo.name)}"]\n`;
+
+  if (apis.length > 0) {
+    chart += `  subgraph APIS["API Layer"]\n`;
+    chart += `    direction TB\n`;
+    apis.slice(0, 6).forEach((api, i) => {
+      const short = api.split("/").slice(-2).join("/");
+      chart += `    A${i}["${sanitize(short)}"]\n`;
+    });
+    chart += `  end\n`;
+    chart += `  APP --> APIS\n`;
+  }
+
+  if (integrations.length > 0) {
+    chart += `  subgraph EXT["External Services"]\n`;
+    chart += `    direction TB\n`;
+    integrations.slice(0, 6).forEach((int, i) => {
+      chart += `    E${i}["${sanitize(int)}"]\n`;
+    });
+    chart += `  end\n`;
+    chart += `  APP --> EXT\n`;
+  }
+
+  return chart;
+}
+
 export function buildFeatureTreeChart(brief: ProjectBrief): string {
   const features = brief.features.slice(0, 10);
   if (features.length === 0) return "";

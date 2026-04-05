@@ -3,12 +3,18 @@
 import type { ProjectBrief } from "@/lib/types";
 import { Tag } from "@/components/Tag";
 import { MermaidChart } from "@/components/MermaidChart";
-import { buildArchitectureChart } from "@/lib/charts";
+import {
+  buildArchitectureChart,
+  buildStackLayersChart,
+  buildDependencyChart,
+} from "@/lib/charts";
 import { Box, Folder, Plug, Package } from "lucide-react";
 
 export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
   const { architecture } = brief;
-  const archChart = buildArchitectureChart(brief);
+  const systemChart = buildArchitectureChart(brief);
+  const stackChart = buildStackLayersChart(brief);
+  const depChart = buildDependencyChart(brief);
 
   const depCount = Object.keys(architecture.dependencies).length;
   const devDepsApprox = Object.entries(architecture.dependencies).filter(
@@ -39,13 +45,38 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
         </div>
       )}
 
-      {/* Architecture diagram */}
-      {archChart && (
-        <div className="mb-8">
-          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
-            System Overview
-          </h3>
-          <MermaidChart chart={archChart} />
+      {/* Charts row */}
+      {(systemChart || stackChart || depChart) && (
+        <div className="mb-8 flex flex-col gap-4">
+          {/* Stack layers chart */}
+          {stackChart && (
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
+                Stack Layers
+              </h3>
+              <MermaidChart chart={stackChart} />
+            </div>
+          )}
+
+          {/* System overview + dependency side by side when both exist */}
+          <div className={`grid gap-4 ${systemChart && depChart ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"}`}>
+            {systemChart && (
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
+                  Module Overview
+                </h3>
+                <MermaidChart chart={systemChart} />
+              </div>
+            )}
+            {depChart && (
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
+                  Integrations & APIs
+                </h3>
+                <MermaidChart chart={depChart} />
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -121,7 +152,7 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
 
       {/* Integrations */}
       {architecture.integrations.length > 0 && (
-        <div>
+        <div className="mb-8">
           <h3 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
             Integrations
           </h3>
@@ -131,6 +162,39 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
                 {integration}
               </Tag>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Dependencies */}
+      {Object.keys(architecture.dependencies).length > 0 && (
+        <div>
+          <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
+            <Package size={14} />
+            Dependencies
+          </h3>
+          <div className="border border-border rounded-xl overflow-hidden">
+            <div className="grid grid-cols-[1fr_auto] px-4 py-2 bg-surface text-xs font-medium text-foreground-secondary uppercase tracking-wider">
+              <span>Package</span>
+              <span>Version</span>
+            </div>
+            {Object.entries(architecture.dependencies)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([pkg, version], i) => (
+                <div
+                  key={pkg}
+                  className={`grid grid-cols-[1fr_auto] items-center px-4 py-2 ${
+                    i > 0 ? "border-t border-border" : ""
+                  } hover:bg-surface-hover transition-colors`}
+                >
+                  <code className="text-sm font-mono text-foreground">
+                    {pkg}
+                  </code>
+                  <code className="text-xs font-mono text-foreground-secondary bg-surface px-2 py-0.5 rounded">
+                    {version}
+                  </code>
+                </div>
+              ))}
           </div>
         </div>
       )}
