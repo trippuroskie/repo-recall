@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
+import { UserMenu } from "@/components/UserMenu";
 import { AnalyzeForm } from "@/components/AnalyzeForm";
 import type { ProjectBrief } from "@/lib/types";
 import {
@@ -54,13 +55,16 @@ export default function DashboardPage() {
           <Link href="/">
             <Logo />
           </Link>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-1.5 bg-foreground text-background px-3.5 py-1.5 rounded-lg text-sm font-medium hover:bg-foreground/90 transition-colors"
-          >
-            <Plus size={14} />
-            New Brief
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="flex items-center gap-1.5 bg-foreground text-background px-3.5 py-1.5 rounded-lg text-sm font-medium hover:bg-foreground/90 transition-colors"
+            >
+              <Plus size={14} />
+              New Brief
+            </button>
+            <UserMenu />
+          </div>
         </div>
       </header>
 
