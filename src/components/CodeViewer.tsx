@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Loader2, X } from "lucide-react";
+import { highlightLines } from "@/lib/highlighter";
 
 interface CodeViewerProps {
   owner: string;
@@ -9,8 +10,14 @@ interface CodeViewerProps {
   files: string[];
   activeFile: string | null;
   activeLine: number | null;
+  activeLineEnd?: number | null;
   onFileSelect: (path: string) => void;
   onClose: () => void;
+}
+
+interface TokenSpan {
+  content: string;
+  color?: string;
 }
 
 export function CodeViewer({
@@ -19,13 +26,20 @@ export function CodeViewer({
   files,
   activeFile,
   activeLine,
+  activeLineEnd,
   onFileSelect,
   onClose,
 }: CodeViewerProps) {
   const [fileContents, setFileContents] = useState<Record<string, string>>({});
+  const [highlightedTokens, setHighlightedTokens] = useState<
+    Record<string, TokenSpan[][]>
+  >({});
   const [loading, setLoading] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const lineRef = useRef<HTMLTableRowElement>(null);
+
+  const getExtension = (path: string) =>
+    path.split(".").pop()?.toLowerCase() || "";
 
   const fetchFile = useCallback(
     async (path: string) => {
@@ -39,6 +53,15 @@ export function CodeViewer({
         if (!res.ok) throw new Error("Failed to load file");
         const data = await res.json();
         setFileContents((prev) => ({ ...prev, [path]: data.content }));
+
+        // Trigger syntax highlighting
+        const ext = getExtension(path);
+        highlightLines(data.content, ext).then((result) => {
+          setHighlightedTokens((prev) => ({
+            ...prev,
+            [path]: result.tokens,
+          }));
+        });
       } catch {
         setError(`Could not load ${path}`);
       } finally {
@@ -50,6 +73,7 @@ export function CodeViewer({
 
   useEffect(() => {
     if (activeFile) {
+      setError(null);
       fetchFile(activeFile);
     }
   }, [activeFile, fetchFile]);
@@ -64,10 +88,16 @@ export function CodeViewer({
   }, [activeLine, activeFile]);
 
   const content = activeFile ? fileContents[activeFile] : null;
+  const tokens = activeFile ? highlightedTokens[activeFile] : null;
   const lines = content?.split("\n") || [];
   const fileName = (path: string) => path.split("/").pop() || path;
 
-  // Infer language from file extension for styling
+  const isLineHighlighted = (lineNum: number) => {
+    if (!activeLine) return false;
+    const end = activeLineEnd ?? activeLine;
+    return lineNum >= activeLine && lineNum <= end;
+  };
+
   const getLanguageLabel = (path: string) => {
     const ext = path.split(".").pop()?.toLowerCase();
     const map: Record<string, string> = {
@@ -90,6 +120,21 @@ export function CodeViewer({
       dockerfile: "Docker",
     };
     return map[ext || ""] || ext?.toUpperCase() || "";
+  };
+
+  const renderLineContent = (lineIndex: number, fallbackText: string) => {
+    if (tokens && tokens[lineIndex]) {
+      return (
+        <pre style={{ margin: 0, font: "inherit" }}>
+          {tokens[lineIndex].map((token, j) => (
+            <span key={j} style={token.color ? { color: token.color } : undefined}>
+              {token.content}
+            </span>
+          ))}
+        </pre>
+      );
+    }
+    return <pre style={{ margin: 0, font: "inherit" }}>{fallbackText || "\n"}</pre>;
   };
 
   return (
@@ -149,16 +194,17 @@ export function CodeViewer({
             <tbody>
               {lines.map((line, i) => {
                 const lineNum = i + 1;
-                const isActive = activeLine === lineNum;
+                const highlighted = isLineHighlighted(lineNum);
+                const isFirstHighlighted = highlighted && (lineNum === activeLine);
                 return (
                   <tr
                     key={i}
-                    ref={isActive ? lineRef : undefined}
-                    className={isActive ? "code-viewer-line-active" : ""}
+                    ref={isFirstHighlighted ? lineRef : undefined}
+                    className={highlighted ? "code-viewer-line-active" : ""}
                   >
                     <td className="code-viewer-line-num">{lineNum}</td>
                     <td className="code-viewer-line-code">
-                      <pre>{line || "\n"}</pre>
+                      {renderLineContent(i, line)}
                     </td>
                   </tr>
                 );

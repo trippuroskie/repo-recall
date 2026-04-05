@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { ArrowRight, X, Loader2, Trash2, ChevronDown, MessageSquare } from "lucide-react";
 import { CodeViewer } from "@/components/CodeViewer";
+import { HighlightedCode } from "@/components/HighlightedCode";
 import type { ProjectBrief } from "@/lib/types";
 
 interface ChatMessage {
@@ -15,12 +16,32 @@ interface ChatPanelProps {
   brief: ProjectBrief;
 }
 
+interface FileRef {
+  path: string;
+  startLine?: number;
+  endLine?: number;
+}
+
+// Parse a file reference string like "path/to/file.ts:123" or "path/to/file.ts:10-20"
+function parseFileRef(raw: string): FileRef {
+  // Match path:startLine-endLine or path:line
+  const lineMatch = raw.match(/^(.+?):(\d+)(?:-(\d+))?$/);
+  if (lineMatch) {
+    return {
+      path: lineMatch[1].trim(),
+      startLine: parseInt(lineMatch[2], 10),
+      endLine: lineMatch[3] ? parseInt(lineMatch[3], 10) : undefined,
+    };
+  }
+  return { path: raw.trim() };
+}
+
 // Extract [[file:path]] references from text
 function extractFileRefs(text: string): string[] {
   const matches = text.matchAll(/\[\[file:([^\]]+)\]\]/g);
   const files: string[] = [];
   for (const match of matches) {
-    const path = match[1].trim();
+    const { path } = parseFileRef(match[1]);
     if (!files.includes(path)) files.push(path);
   }
   return files;
@@ -44,6 +65,8 @@ export function ChatPanel({ brief }: ChatPanelProps) {
   const [streaming, setStreaming] = useState(false);
   const [codeViewerOpen, setCodeViewerOpen] = useState(false);
   const [activeFile, setActiveFile] = useState<string | null>(null);
+  const [activeLine, setActiveLine] = useState<number | null>(null);
+  const [activeLineEnd, setActiveLineEnd] = useState<number | null>(null);
   const [viewerFiles, setViewerFiles] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -69,6 +92,8 @@ export function ChatPanel({ brief }: ChatPanelProps) {
     setStreaming(false);
     setCodeViewerOpen(false);
     setActiveFile(null);
+    setActiveLine(null);
+    setActiveLineEnd(null);
     setViewerFiles([]);
   }, [brief.id]);
 
@@ -90,12 +115,14 @@ export function ChatPanel({ brief }: ChatPanelProps) {
     }
   }, [messages, expanded]);
 
-  const handleFileRef = useCallback((path: string) => {
+  const handleFileRef = useCallback((ref: FileRef) => {
     setViewerFiles((prev) => {
-      if (prev.includes(path)) return prev;
-      return [...prev, path];
+      if (prev.includes(ref.path)) return prev;
+      return [...prev, ref.path];
     });
-    setActiveFile(path);
+    setActiveFile(ref.path);
+    setActiveLine(ref.startLine ?? null);
+    setActiveLineEnd(ref.endLine ?? null);
     setCodeViewerOpen(true);
   }, []);
 
@@ -216,6 +243,8 @@ export function ChatPanel({ brief }: ChatPanelProps) {
     setMessages([]);
     setCodeViewerOpen(false);
     setActiveFile(null);
+    setActiveLine(null);
+    setActiveLineEnd(null);
     setViewerFiles([]);
   }, [streaming]);
 
@@ -231,21 +260,7 @@ export function ChatPanel({ brief }: ChatPanelProps) {
       const codeMatch = block.match(/^```(\w*)\n([\s\S]*?)```$/);
       if (codeMatch) {
         elements.push(
-          <pre
-            key={i}
-            style={{
-              background: "#f7f6f3",
-              borderRadius: 6,
-              padding: "12px 16px",
-              margin: "6px 0",
-              fontSize: 13,
-              overflowX: "auto",
-              lineHeight: 1.5,
-              fontFamily: "var(--font-mono), monospace",
-            }}
-          >
-            <code>{codeMatch[2]}</code>
-          </pre>
+          <HighlightedCode key={i} code={codeMatch[2]} language={codeMatch[1] || "text"} />
         );
       } else {
         elements.push(<span key={i}>{renderParagraphs(block)}</span>);
@@ -387,19 +402,27 @@ export function ChatPanel({ brief }: ChatPanelProps) {
     // Split on [[file:...]] (greedy path with brackets), `code`, and **bold**
     const parts = text.split(/(\[\[file:[^\]]*(?:\[[^\]]*\][^\]]*)*\]\]|`[^`]+`|\*\*[^*]+\*\*)/g);
     return parts.map((part, i) => {
-      // File reference — handle paths with brackets like [...nextauth]
+      // File reference — handle paths with brackets like [...nextauth] and line numbers
       const fileMatch = part.match(/^\[\[file:(.*)\]\]$/);
       if (fileMatch) {
-        const filePath = fileMatch[1].trim();
-        const fileName = filePath.split("/").pop() || filePath;
+        const ref = parseFileRef(fileMatch[1]);
+        const fileName = ref.path.split("/").pop() || ref.path;
+        const lineLabel = ref.startLine
+          ? ref.endLine
+            ? `:${ref.startLine}-${ref.endLine}`
+            : `:${ref.startLine}`
+          : "";
         return (
           <button
             key={i}
-            onClick={() => handleFileRef(filePath)}
+            onClick={() => handleFileRef(ref)}
             className="codemap-code-ref"
             style={{ verticalAlign: "baseline", marginLeft: 2, marginRight: 2 }}
           >
             {fileName}
+            {lineLabel && (
+              <span className="code-ref-line-badge">{lineLabel}</span>
+            )}
           </button>
         );
       }
@@ -873,8 +896,13 @@ export function ChatPanel({ brief }: ChatPanelProps) {
               repo={brief.repoInfo.name}
               files={viewerFiles}
               activeFile={activeFile}
-              activeLine={null}
-              onFileSelect={setActiveFile}
+              activeLine={activeLine}
+              activeLineEnd={activeLineEnd}
+              onFileSelect={(path) => {
+                setActiveFile(path);
+                setActiveLine(null);
+                setActiveLineEnd(null);
+              }}
               onClose={() => setCodeViewerOpen(false)}
             />
           </div>

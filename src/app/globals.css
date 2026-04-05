@@ -521,6 +521,69 @@ body {
   color: #937a00;
 }
 
+/* ─── Chat code blocks (syntax highlighted) ─── */
+
+.chat-code-block {
+  position: relative;
+  margin: 6px 0;
+  border-radius: 6px;
+  overflow: hidden;
+  background: #f7f6f3;
+}
+
+.chat-code-block pre {
+  margin: 0 !important;
+  padding: 12px 16px !important;
+  background: transparent !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+  overflow-x: auto;
+  font-family: var(--font-mono), 'SF Mono', Monaco, 'Cascadia Code', monospace !important;
+}
+
+.chat-code-block code {
+  font-family: inherit !important;
+  font-size: inherit !important;
+  background: transparent !important;
+}
+
+.chat-code-block .shiki {
+  background: transparent !important;
+}
+
+.chat-code-lang {
+  position: absolute;
+  top: 6px;
+  right: 10px;
+  font-size: 11px;
+  color: #a0a09c;
+  font-family: inherit;
+  pointer-events: none;
+  text-transform: capitalize;
+}
+
+.chat-code-block-fallback {
+  position: relative;
+  background: #f7f6f3;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin: 6px 0;
+  font-size: 13px;
+  overflow-x: auto;
+  line-height: 1.55;
+  font-family: var(--font-mono), 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+/* ─── Code reference line badge ─── */
+
+.code-ref-line-badge {
+  display: inline-block;
+  margin-left: 3px;
+  font-size: 0.85em;
+  opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
 .mermaid-container svg {
   max-width: 100%;
   height: auto;
