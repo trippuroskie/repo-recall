@@ -1,0 +1,132 @@
+export interface RepoInfo {
+  owner: string;
+  name: string;
+  fullName: string;
+  description: string | null;
+  language: string | null;
+  stars: number;
+  forks: number;
+  defaultBranch: string;
+  updatedAt: string;
+  createdAt: string;
+  isPrivate: boolean;
+  topics: string[];
+  url: string;
+}
+
+export interface FileNode {
+  path: string;
+  name: string;
+  type: "file" | "dir";
+  size?: number;
+}
+
+export interface PRSummary {
+  number: number;
+  title: string;
+  body: string | null;
+  state: string;
+  mergedAt: string | null;
+  createdAt: string;
+  closedAt: string | null;
+  author: string;
+  labels: string[];
+  additions: number;
+  deletions: number;
+  changedFiles: number;
+}
+
+export interface CommitSummary {
+  sha: string;
+  message: string;
+  author: string;
+  date: string;
+  additions?: number;
+  deletions?: number;
+}
+
+export interface FeatureMapping {
+  name: string;
+  description: string;
+  files: string[];
+  businessPurpose: string;
+  category:
+    | "acquisition"
+    | "activation"
+    | "retention"
+    | "revenue"
+    | "admin"
+    | "infrastructure";
+}
+
+export interface Milestone {
+  date: string;
+  title: string;
+  description: string;
+  prs: number[];
+  theme: string;
+  isInferred: boolean;
+}
+
+export interface Entrypoint {
+  path: string;
+  reason: string;
+  priority: "high" | "medium" | "low";
+  type: "file" | "service" | "flow";
+}
+
+export interface ProjectBrief {
+  id: string;
+  repoInfo: RepoInfo;
+  generatedAt: string;
+
+  // What this project is
+  overview: {
+    summary: string;
+    likelyUser: string;
+    valueProposition: string;
+    majorFlows: string[];
+  };
+
+  // How it is built
+  architecture: {
+    stack: string[];
+    dependencies: Record<string, string>;
+    apis: string[];
+    integrations: string[];
+    summary: string;
+    keyModules: { name: string; path: string; purpose: string }[];
+  };
+
+  // Core features
+  features: FeatureMapping[];
+
+  // Business context
+  businessContext: {
+    targetUser: string;
+    businessModel: string;
+    valueProposition: string;
+    featureClassification: FeatureMapping[];
+    isInferred: boolean;
+  };
+
+  // Evolution timeline
+  timeline: Milestone[];
+
+  // Where to start
+  entrypoints: Entrypoint[];
+}
+
+export interface AnalysisStatus {
+  step:
+    | "connecting"
+    | "fetching-tree"
+    | "fetching-prs"
+    | "fetching-commits"
+    | "reading-files"
+    | "generating-brief"
+    | "complete"
+    | "error";
+  progress: number;
+  message: string;
+}

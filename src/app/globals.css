@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #37352f;
+  --foreground-secondary: #6b7280;
+  --border: #e5e5e5;
+  --border-hover: #d1d5db;
+  --surface: #f7f6f3;
+  --surface-hover: #efefee;
+  --accent: #2383e2;
+  --accent-light: #e8f0fe;
+  --accent-hover: #1b6ec2;
+  --success: #0f766e;
+  --success-light: #f0fdf4;
+  --warning: #c2410c;
+  --warning-light: #fff7ed;
+  --tag-blue: #d3e5ef;
+  --tag-green: #dbeddb;
+  --tag-orange: #fadec9;
+  --tag-purple: #e8deee;
+  --tag-pink: #f5e0e9;
+  --tag-yellow: #fdecc8;
+  --tag-gray: #e3e2e0;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-foreground-secondary: var(--foreground-secondary);
+  --color-border: var(--border);
+  --color-border-hover: var(--border-hover);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-accent-hover: var(--accent-hover);
+  --color-success: var(--success);
+  --color-success-light: var(--success-light);
+  --color-warning: var(--warning);
+  --color-warning-light: var(--warning-light);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-green: var(--tag-green);
+  --color-tag-orange: var(--tag-orange);
+  --color-tag-purple: var(--tag-purple);
+  --color-tag-pink: var(--tag-pink);
+  --color-tag-yellow: var(--tag-yellow);
+  --color-tag-gray: var(--tag-gray);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background-color: var(--accent-light);
+  color: var(--foreground);
+}
+
+/* Notion-style scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-hover);
+}
+
+/* Notion-inspired animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+/* Staggered animation delays */
+.delay-1 { animation-delay: 0.05s; }
+.delay-2 { animation-delay: 0.1s; }
+.delay-3 { animation-delay: 0.15s; }
+.delay-4 { animation-delay: 0.2s; }
+.delay-5 { animation-delay: 0.25s; }
+
+/* Sidebar hover styles */
+.sidebar-btn-hover:hover {
+  background-color: rgba(55, 53, 47, 0.04);
+}
+
+.sidebar-btn-subtle:hover {
+  background-color: rgba(55, 53, 47, 0.06);
+}
+
+/* Loading spinner */
+@keyframes loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Mermaid chart overrides */
+.mermaid-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.mermaid-container .node rect,
+.mermaid-container .node circle,
+.mermaid-container .node polygon {
+  stroke-width: 1px;
+}
+
+.mermaid-container .edgeLabel {
+  font-size: 11px;
+}
