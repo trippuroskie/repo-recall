@@ -152,6 +152,8 @@ export function BriefSidebar({
   onConnectNew,
 }: BriefSidebarProps) {
   const [reposOpen, setReposOpen] = useState(true);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   // Safety guard — brief may be undefined during hot-reload
   if (!brief?.repoInfo) return null;
@@ -250,22 +252,57 @@ export function BriefSidebar({
 
       {/* Search */}
       <div style={{ padding: "8px 12px" }}>
-        <div
-          className="sidebar-btn-hover"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-            padding: "4px 8px",
-            borderRadius: 4,
-            color: "rgb(160,159,156)",
-            fontSize: 13,
-            cursor: "pointer",
-          }}
-        >
-          <IconSearch />
-          <span>Search</span>
-        </div>
+        {searchOpen ? (
+          <div style={{ position: "relative" }}>
+            <input
+              autoFocus
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setSearchOpen(false);
+                  setSearchQuery("");
+                }
+              }}
+              placeholder="Filter briefs & sections…"
+              style={{
+                width: "100%",
+                padding: "5px 8px 5px 28px",
+                borderRadius: 4,
+                border: "1px solid rgba(55,53,47,0.16)",
+                fontSize: 13,
+                outline: "none",
+                color: "rgb(55,53,47)",
+                backgroundColor: "#fff",
+              }}
+            />
+            <span style={{ position: "absolute", left: 8, top: 7, color: "rgb(160,159,156)" }}>
+              <IconSearch />
+            </span>
+          </div>
+        ) : (
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="sidebar-btn-hover"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "4px 8px",
+              borderRadius: 4,
+              color: "rgb(160,159,156)",
+              fontSize: 13,
+              cursor: "pointer",
+              width: "100%",
+              background: "none",
+              border: "none",
+            }}
+          >
+            <IconSearch />
+            <span>Search</span>
+          </button>
+        )}
       </div>
 
       {/* Scrollable content */}
@@ -295,7 +332,10 @@ export function BriefSidebar({
 
         {reposOpen && (
           <div style={{ paddingLeft: 4, marginBottom: 8 }}>
-            {allBriefs.map((b) => {
+            {allBriefs.filter((b) =>
+              !searchQuery || b.repoInfo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+              b.repoInfo.owner.toLowerCase().includes(searchQuery.toLowerCase())
+            ).map((b) => {
               const isActive = b.id === brief.id;
               return (
                 <button
@@ -424,7 +464,9 @@ export function BriefSidebar({
           >
             Brief
           </div>
-          {briefSections.map((s) => {
+          {briefSections.filter((s) =>
+            !searchQuery || s.label.toLowerCase().includes(searchQuery.toLowerCase())
+          ).map((s) => {
             const Icon = s.icon;
             const isActive = activeSection === s.id;
 

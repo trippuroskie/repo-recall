@@ -4,11 +4,17 @@ import type { ProjectBrief } from "@/lib/types";
 import { Tag } from "@/components/Tag";
 import { MermaidChart } from "@/components/MermaidChart";
 import { buildArchitectureChart } from "@/lib/charts";
-import { Box, Folder, Plug } from "lucide-react";
+import { Box, Folder, Plug, Package } from "lucide-react";
 
 export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
   const { architecture } = brief;
   const archChart = buildArchitectureChart(brief);
+
+  const depCount = Object.keys(architecture.dependencies).length;
+  const devDepsApprox = Object.entries(architecture.dependencies).filter(
+    ([key]) => key.startsWith("@types/") || ["eslint", "typescript", "prettier", "jest", "vitest"].some((d) => key.includes(d))
+  ).length;
+  const prodDeps = depCount - devDepsApprox;
 
   return (
     <div className="animate-fade-in">
@@ -18,6 +24,20 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
       <p className="text-foreground-secondary text-sm mb-6">
         {architecture.summary}
       </p>
+
+      {/* Dependency stats */}
+      {depCount > 0 && (
+        <div className="flex flex-wrap items-center gap-4 mb-6 text-sm text-foreground-secondary border border-border rounded-xl px-5 py-3 bg-surface/50">
+          <span className="flex items-center gap-1.5">
+            <Package size={14} />
+            {depCount} total dependencies
+          </span>
+          <span>~{prodDeps} production</span>
+          <span>~{devDepsApprox} dev</span>
+          <span>{architecture.apis.length} API endpoint(s)</span>
+          <span>{architecture.integrations.length} integration(s)</span>
+        </div>
+      )}
 
       {/* Architecture diagram */}
       {archChart && (
