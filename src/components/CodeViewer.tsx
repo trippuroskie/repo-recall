@@ -78,14 +78,15 @@ export function CodeViewer({
     }
   }, [activeFile, fetchFile]);
 
-  // Scroll to active line
+  // Scroll to active line (re-runs after content loads so lineRef is attached)
+  const activeContent = activeFile ? fileContents[activeFile] : null;
   useEffect(() => {
     if (activeLine && lineRef.current) {
       setTimeout(() => {
         lineRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
       }, 100);
     }
-  }, [activeLine, activeFile]);
+  }, [activeLine, activeFile, activeContent]);
 
   const content = activeFile ? fileContents[activeFile] : null;
   const tokens = activeFile ? highlightedTokens[activeFile] : null;

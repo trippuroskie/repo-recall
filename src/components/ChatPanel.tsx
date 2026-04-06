@@ -53,6 +53,21 @@ function extractFileRefs(text: string): string[] {
   return files;
 }
 
+// Extract full FileRef objects (with line info) from text
+function extractFullFileRefs(text: string): FileRef[] {
+  const matches = text.matchAll(/\[\[file:([^\]]+)\]\]/g);
+  const refs: FileRef[] = [];
+  const seen = new Set<string>();
+  for (const match of matches) {
+    const ref = parseFileRef(match[1]);
+    if (!seen.has(match[1]) && looksLikeFile(ref.path)) {
+      seen.add(match[1]);
+      refs.push(ref);
+    }
+  }
+  return refs;
+}
+
 // Get all file refs from all messages
 function getAllFileRefs(messages: ChatMessage[]): string[] {
   const files: string[] = [];
@@ -62,6 +77,16 @@ function getAllFileRefs(messages: ChatMessage[]): string[] {
     }
   }
   return files;
+}
+
+// Get the last full FileRef from all messages (with line info)
+function getLatestFullRef(messages: ChatMessage[]): FileRef | null {
+  let latest: FileRef | null = null;
+  for (const msg of messages) {
+    const refs = extractFullFileRefs(msg.content);
+    if (refs.length > 0) latest = refs[refs.length - 1];
+  }
+  return latest;
 }
 
 export function ChatPanel({ brief }: ChatPanelProps) {
@@ -112,10 +137,12 @@ export function ChatPanel({ brief }: ChatPanelProps) {
         if (newFiles.length === 0) return prev;
         return [...prev, ...newFiles];
       });
-      // Auto-select the latest referenced file
-      const latestRef = allRefs[allRefs.length - 1];
+      // Auto-select the latest referenced file, including line info
+      const latestRef = getLatestFullRef(messages);
       if (latestRef) {
-        setActiveFile(latestRef);
+        setActiveFile(latestRef.path);
+        setActiveLine(latestRef.startLine ?? null);
+        setActiveLineEnd(latestRef.endLine ?? null);
         setCodeViewerOpen(true);
       }
     }
