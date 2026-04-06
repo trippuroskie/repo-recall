@@ -3,7 +3,8 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, GitBranch, Lock } from "lucide-react";
-import { LoadingView } from "@/components/LoadingView";
+import { AnalysisProgress } from "@/components/AnalysisProgress";
+import type { ProjectBrief } from "@/lib/types";
 
 const EXAMPLE_REPOS = [
   { name: "openai/codex", description: "AI coding agent", tags: ["TypeScript", "Python", "AI"] },
@@ -18,58 +19,39 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
   const [repoUrl, setRepoUrl] = useState("");
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [apiDone, setApiDone] = useState(false);
-  const [briefId, setBriefId] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleLoadingComplete = useCallback(() => {
-    if (briefId) {
-      router.push(`/brief/${briefId}`);
-    }
-  }, [briefId, router]);
+  const handleComplete = useCallback(
+    (brief: ProjectBrief) => {
+      router.push(`/brief/${brief.id}`);
+    },
+    [router]
+  );
 
-  async function handleSubmit(e: React.FormEvent) {
+  const handleError = useCallback((message: string) => {
+    setError(message);
+    setAnalyzing(false);
+  }, []);
+
+  function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!repoUrl.trim()) return;
-
-    setLoading(true);
     setError(null);
-    setApiDone(false);
-    setBriefId(null);
-
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          repoUrl: repoUrl.trim(),
-          token: token.trim() || undefined,
-        }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Analysis failed");
-      }
-
-      const data = await res.json();
-      setBriefId(data.brief.id);
-      setApiDone(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setLoading(false);
-      setApiDone(false);
-      setBriefId(null);
-    }
+    setAnalyzing(true);
   }
 
   return (
     <>
-      {/* Full-screen loading overlay */}
-      {loading && !error && (
-        <LoadingView onComplete={handleLoadingComplete} apiDone={apiDone} />
+      {/* Streaming analysis progress overlay */}
+      {analyzing && !error && (
+        <AnalysisProgress
+          repoUrl={repoUrl}
+          token={token || undefined}
+          onComplete={handleComplete}
+          onError={handleError}
+        />
       )}
 
       <form onSubmit={handleSubmit} className="w-full max-w-xl">
@@ -86,14 +68,14 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
               onChange={(e) => setRepoUrl(e.target.value)}
               placeholder="Paste a GitHub repo URL or owner/repo"
               className="flex-1 bg-transparent outline-none text-foreground placeholder:text-foreground-secondary/50 text-sm"
-              disabled={loading}
+              disabled={analyzing}
             />
             <button
               type="submit"
-              disabled={loading || !repoUrl.trim()}
+              disabled={analyzing || !repoUrl.trim()}
               className="flex items-center gap-1.5 bg-foreground text-background px-4 py-1.5 rounded-lg text-sm font-medium hover:bg-foreground/90 disabled:opacity-40 disabled:cursor-not-allowed transition-all shrink-0"
             >
-              {loading ? (
+              {analyzing ? (
                 <>
                   <Loader2 size={14} className="animate-spin" />
                   Analyzing
@@ -125,7 +107,7 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
               onChange={(e) => setToken(e.target.value)}
               placeholder="GitHub personal access token"
               className="border border-border rounded-xl px-4 py-2.5 bg-white outline-none text-sm focus:border-foreground/30 transition-colors placeholder:text-foreground-secondary/50"
-              disabled={loading}
+              disabled={analyzing}
             />
           )}
 

@@ -8,6 +8,7 @@ import {
   fetchFileContent,
 } from "@/lib/github";
 import { generateBrief } from "@/lib/analysis";
+import { runAgenticAnalysis, type ProgressEvent } from "@/lib/agent/orchestrator";
 import { saveBrief, trackUsage, rollbackUsage, getGitHubToken } from "@/lib/store";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth";
@@ -79,40 +80,84 @@ export async function POST(request: NextRequest) {
 
     // Reserve usage quota before doing expensive work
     const usageId = await trackUsage(user.id, "analyze", `${owner}/${repo}`);
+    const userId = user.id;
 
-    try {
-      // Fetch remaining data in parallel
-      const [files, prs, commits] = await Promise.all([
-        fetchRepoTree(owner, repo, authToken),
-        fetchPRs(owner, repo, authToken),
-        fetchCommits(owner, repo, authToken),
-      ]);
+    // Set up SSE streaming
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (event: ProgressEvent) => {
+          try {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
+            );
+          } catch {
+            // Controller may be closed
+          }
+        };
 
-      // Fetch key files
-      const [packageJson, readme] = await Promise.all([
-        fetchFileContent(owner, repo, "package.json", authToken),
-        fetchFileContent(owner, repo, "README.md", authToken),
-      ]);
+        try {
+          // Fetch base data in parallel
+          send({ type: "progress", phase: "Fetching repository data", current: 0, total: 3 });
 
-      // Generate the brief
-      const brief = generateBrief(
-        repoInfo,
-        files,
-        prs,
-        commits,
-        packageJson,
-        readme
-      );
+          const [files, prs, commits] = await Promise.all([
+            fetchRepoTree(owner, repo, authToken),
+            fetchPRs(owner, repo, authToken),
+            fetchCommits(owner, repo, authToken),
+          ]);
 
-      // Save to database
-      await saveBrief(brief, user.id);
+          const [packageJson, readme] = await Promise.all([
+            fetchFileContent(owner, repo, "package.json", authToken),
+            fetchFileContent(owner, repo, "README.md", authToken),
+          ]);
 
-      return NextResponse.json({ brief });
-    } catch (innerError) {
-      // Roll back usage reservation on failure
-      if (usageId) await rollbackUsage(usageId);
-      throw innerError;
-    }
+          // Try agentic analysis first, fall back to static
+          let brief;
+          try {
+            brief = await runAgenticAnalysis({
+              repoInfo,
+              files,
+              prs,
+              commits,
+              packageJson,
+              readme,
+              token: authToken,
+              onProgress: send,
+            });
+          } catch (agentError) {
+            console.error("Agentic analysis failed, falling back to static:", agentError);
+            send({
+              type: "error",
+              message: "Agentic analysis failed. Using static analysis as fallback.",
+            });
+            brief = generateBrief(repoInfo, files, prs, commits, packageJson, readme);
+          }
+
+          // Save to database
+          await saveBrief(brief, userId);
+
+          send({ type: "complete", brief });
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        } catch (innerError) {
+          // Roll back usage reservation on failure
+          if (usageId) await rollbackUsage(usageId);
+          const message =
+            innerError instanceof Error ? innerError.message : "Analysis failed";
+          send({ type: "error", message });
+          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      },
+    });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Analysis failed";

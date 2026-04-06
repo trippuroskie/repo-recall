@@ -24,6 +24,7 @@ export async function saveBrief(
     timeline: JSON.parse(JSON.stringify(brief.timeline)),
     entrypoints: JSON.parse(JSON.stringify(brief.entrypoints)),
     generated_at: brief.generatedAt,
+    ...(brief.codemap ? { codemap: JSON.parse(JSON.stringify(brief.codemap)) } : {}),
   };
   const { error } = await supabase.from("briefs").upsert(row);
   if (error) throw new Error(`Failed to save brief: ${error.message}`);
@@ -263,5 +264,6 @@ function rowToBrief(row: Record<string, unknown>): ProjectBrief {
       row.business_context as unknown as ProjectBrief["businessContext"],
     timeline: row.timeline as unknown as ProjectBrief["timeline"],
     entrypoints: row.entrypoints as unknown as ProjectBrief["entrypoints"],
+    ...(row.codemap ? { codemap: row.codemap as unknown as ProjectBrief["codemap"] } : {}),
   };
 }

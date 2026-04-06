@@ -65,6 +65,7 @@ export interface Database {
           business_context: Json;
           timeline: Json;
           entrypoints: Json;
+          codemap: Json | null;
           generated_at: string;
           created_at: string;
           updated_at: string;
@@ -80,6 +81,7 @@ export interface Database {
           business_context: Json;
           timeline: Json;
           entrypoints: Json;
+          codemap?: Json | null;
           generated_at: string;
           created_at?: string;
           updated_at?: string;
@@ -95,6 +97,7 @@ export interface Database {
           business_context?: Json;
           timeline?: Json;
           entrypoints?: Json;
+          codemap?: Json | null;
           generated_at?: string;
           updated_at?: string;
         };
