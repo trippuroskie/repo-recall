@@ -25,8 +25,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { briefId, messages } = (await request.json()) as {
+    const { briefId, sessionId, messages } = (await request.json()) as {
       briefId: string;
+      sessionId?: string;
       messages: { role: "user" | "assistant"; content: string }[];
     };
 
@@ -91,7 +92,7 @@ export async function POST(request: NextRequest) {
       content: userMsg.content,
       timestamp: new Date().toISOString(),
     };
-    await addChatMessage(briefId, userChatMessage, user.id);
+    await addChatMessage(briefId, userChatMessage, user.id, sessionId);
 
     // Reserve chat usage quota before the expensive AI call
     const usageId = await trackUsage(user.id, "chat_message");
@@ -156,6 +157,7 @@ export async function POST(request: NextRequest) {
     let fullContent = "";
     const userId = user.id;
     const currentBriefId = briefId;
+    const currentSessionId = sessionId;
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -201,7 +203,7 @@ export async function POST(request: NextRequest) {
             content: fullContent,
             timestamp: new Date().toISOString(),
           };
-          await addChatMessage(currentBriefId, assistantMessage, userId);
+          await addChatMessage(currentBriefId, assistantMessage, userId, currentSessionId);
 
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();

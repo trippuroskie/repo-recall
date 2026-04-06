@@ -153,6 +153,11 @@ body {
   animation: chatExpand 0.15s ease-out;
 }
 
+/* Chat history item — show delete on hover */
+.chat-history-item:hover .chat-history-delete {
+  opacity: 1 !important;
+}
+
 /* Thinking dots */
 .chat-thinking-dots {
   display: inline-flex;

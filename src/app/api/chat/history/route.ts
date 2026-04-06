@@ -10,32 +10,38 @@ export async function GET() {
     if (rl.limited) return rateLimitResponse(rl.retryAfter!);
     const supabase = await createClient();
 
-    // Get briefs that have chat messages, with latest message and count
-    const { data: chatBriefs, error } = await supabase
-      .from("chat_messages")
-      .select("brief_id, content, role, timestamp")
+    // Get all sessions for the user with message stats
+    const { data: sessions, error: sessionsError } = await supabase
+      .from("chat_sessions")
+      .select("id, brief_id, title, created_at, updated_at")
       .eq("user_id", user.id)
-      .order("timestamp", { ascending: false });
+      .order("updated_at", { ascending: false });
 
-    if (error) {
+    if (sessionsError) {
       return NextResponse.json({ error: "Failed to fetch chat history" }, { status: 500 });
     }
 
-    if (!chatBriefs || chatBriefs.length === 0) {
+    if (!sessions || sessions.length === 0) {
       return NextResponse.json({ conversations: [] });
     }
 
-    // Group by brief_id: get latest message and count
-    const briefMap = new Map<
+    // Get message counts and last message per session
+    const sessionIds = sessions.map((s) => s.id);
+    const { data: messages } = await supabase
+      .from("chat_messages")
+      .select("session_id, content, role, timestamp")
+      .in("session_id", sessionIds)
+      .order("timestamp", { ascending: false });
+
+    const sessionStats = new Map<
       string,
-      { briefId: string; lastMessage: string; lastRole: string; lastTimestamp: string; messageCount: number }
+      { lastMessage: string; lastRole: string; lastTimestamp: string; messageCount: number }
     >();
 
-    for (const msg of chatBriefs) {
-      const existing = briefMap.get(msg.brief_id);
+    for (const msg of messages || []) {
+      const existing = sessionStats.get(msg.session_id);
       if (!existing) {
-        briefMap.set(msg.brief_id, {
-          briefId: msg.brief_id,
+        sessionStats.set(msg.session_id, {
           lastMessage: msg.content,
           lastRole: msg.role,
           lastTimestamp: msg.timestamp,
@@ -46,27 +52,36 @@ export async function GET() {
       }
     }
 
-    // Fetch brief info for each
-    const briefIds = Array.from(briefMap.keys());
+    // Get brief info for all unique brief IDs
+    const briefIds = [...new Set(sessions.map((s) => s.brief_id))];
     const { data: briefs } = await supabase
       .from("briefs")
       .select("id, repo_full_name, repo_info")
       .in("id", briefIds);
 
-    const conversations = Array.from(briefMap.values()).map((conv) => {
-      const brief = briefs?.find((b) => b.id === conv.briefId);
-      const repoInfo = brief?.repo_info as Record<string, unknown> | undefined;
-      return {
-        briefId: conv.briefId,
-        repoFullName: brief?.repo_full_name ?? "Unknown",
-        repoName: (repoInfo?.name as string) ?? brief?.repo_full_name?.split("/")[1] ?? "Unknown",
-        repoOwner: (repoInfo?.owner as string) ?? brief?.repo_full_name?.split("/")[0] ?? "",
-        lastMessage: conv.lastMessage,
-        lastRole: conv.lastRole,
-        lastTimestamp: conv.lastTimestamp,
-        messageCount: conv.messageCount,
-      };
-    });
+    const briefMap = new Map(briefs?.map((b) => [b.id, b]) || []);
+
+    // Build conversations grouped by repo
+    const conversations = sessions
+      .filter((s) => sessionStats.has(s.id)) // Only sessions with messages
+      .map((s) => {
+        const brief = briefMap.get(s.brief_id);
+        const repoInfo = brief?.repo_info as Record<string, unknown> | undefined;
+        const stats = sessionStats.get(s.id)!;
+        return {
+          sessionId: s.id,
+          briefId: s.brief_id,
+          title: s.title,
+          repoFullName: brief?.repo_full_name ?? "Unknown",
+          repoName: (repoInfo?.name as string) ?? brief?.repo_full_name?.split("/")[1] ?? "Unknown",
+          repoOwner: (repoInfo?.owner as string) ?? brief?.repo_full_name?.split("/")[0] ?? "",
+          lastMessage: stats.lastMessage,
+          lastRole: stats.lastRole,
+          lastTimestamp: stats.lastTimestamp,
+          messageCount: stats.messageCount,
+          createdAt: s.created_at,
+        };
+      });
 
     // Sort by most recent
     conversations.sort(

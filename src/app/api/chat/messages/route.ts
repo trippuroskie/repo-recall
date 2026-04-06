@@ -10,11 +10,12 @@ export async function GET(request: NextRequest) {
     if (rl.limited) return rateLimitResponse(rl.retryAfter!);
 
     const briefId = request.nextUrl.searchParams.get("briefId");
+    const sessionId = request.nextUrl.searchParams.get("sessionId");
     if (!briefId) {
       return NextResponse.json({ error: "briefId is required" }, { status: 400 });
     }
 
-    const messages = await getChatMessages(briefId);
+    const messages = await getChatMessages(briefId, sessionId || undefined);
     return NextResponse.json({ messages });
   } catch (err) {
     if (err instanceof Error && err.message === "Unauthorized") {

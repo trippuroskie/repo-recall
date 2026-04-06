@@ -100,10 +100,37 @@ export interface Database {
         };
         Relationships: [];
       };
+      chat_sessions: {
+        Row: {
+          id: string;
+          brief_id: string;
+          user_id: string;
+          title: string;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id: string;
+          brief_id: string;
+          user_id: string;
+          title?: string;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          brief_id?: string;
+          user_id?: string;
+          title?: string;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
       chat_messages: {
         Row: {
           id: string;
           brief_id: string;
+          session_id: string;
           user_id: string;
           role: string;
           content: string;
@@ -113,6 +140,7 @@ export interface Database {
         Insert: {
           id: string;
           brief_id: string;
+          session_id: string;
           user_id: string;
           role: string;
           content: string;
@@ -122,6 +150,7 @@ export interface Database {
         Update: {
           id?: string;
           brief_id?: string;
+          session_id?: string;
           user_id?: string;
           role?: string;
           content?: string;

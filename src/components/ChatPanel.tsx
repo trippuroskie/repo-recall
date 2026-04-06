@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowRight, X, Loader2, Trash2, ChevronDown, MessageSquare, History, Clock } from "lucide-react";
+import { ArrowRight, X, Loader2, Trash2, ChevronDown, MessageSquare, History, Clock, Plus } from "lucide-react";
 import { CodeViewer } from "@/components/CodeViewer";
 import { HighlightedCode } from "@/components/HighlightedCode";
 import type { ProjectBrief } from "@/lib/types";
 
 interface ChatConversation {
+  sessionId: string;
   briefId: string;
+  title: string;
   repoFullName: string;
   repoName: string;
   repoOwner: string;
@@ -15,6 +17,7 @@ interface ChatConversation {
   lastRole: string;
   lastTimestamp: string;
   messageCount: number;
+  createdAt: string;
 }
 
 interface ChatMessage {
@@ -132,6 +135,8 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [expandedRepos, setExpandedRepos] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -160,26 +165,54 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
     setActiveLineEnd(null);
     setViewerFiles([]);
     setMessagesLoaded(false);
+    setSessionId(null);
   }, [brief.id]);
 
-  // Load persisted messages from DB when brief changes
+  // Load persisted messages from DB when brief or session changes
   useEffect(() => {
     if (messagesLoaded) return;
     let cancelled = false;
     async function loadMessages() {
       try {
-        const res = await fetch(`/api/chat/messages?briefId=${brief.id}`);
-        if (!res.ok || cancelled) return;
-        const data = await res.json();
-        if (cancelled) return;
-        if (data.messages?.length > 0) {
-          setMessages(
-            data.messages.map((m: { id: string; role: string; content: string }) => ({
-              id: m.id,
-              role: m.role as "user" | "assistant",
-              content: m.content,
-            }))
-          );
+        // If we have a sessionId, load that session's messages
+        // Otherwise, find the most recent session for this brief
+        if (sessionId) {
+          const res = await fetch(`/api/chat/messages?briefId=${brief.id}&sessionId=${sessionId}`);
+          if (!res.ok || cancelled) return;
+          const data = await res.json();
+          if (cancelled) return;
+          if (data.messages?.length > 0) {
+            setMessages(
+              data.messages.map((m: { id: string; role: string; content: string }) => ({
+                id: m.id,
+                role: m.role as "user" | "assistant",
+                content: m.content,
+              }))
+            );
+          }
+        } else {
+          // Check for existing sessions and load the most recent one
+          const sessRes = await fetch(`/api/chat/sessions?briefId=${brief.id}`);
+          if (!sessRes.ok || cancelled) return;
+          const sessData = await sessRes.json();
+          if (cancelled) return;
+          if (sessData.sessions?.length > 0) {
+            const latestSession = sessData.sessions[0]; // Already sorted by updated_at desc
+            setSessionId(latestSession.id);
+            const res = await fetch(`/api/chat/messages?briefId=${brief.id}&sessionId=${latestSession.id}`);
+            if (!res.ok || cancelled) return;
+            const data = await res.json();
+            if (cancelled) return;
+            if (data.messages?.length > 0) {
+              setMessages(
+                data.messages.map((m: { id: string; role: string; content: string }) => ({
+                  id: m.id,
+                  role: m.role as "user" | "assistant",
+                  content: m.content,
+                }))
+              );
+            }
+          }
         }
       } catch {
         // Silently fail — user can still start fresh
@@ -189,7 +222,7 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
     }
     loadMessages();
     return () => { cancelled = true; };
-  }, [brief.id, messagesLoaded]);
+  }, [brief.id, sessionId, messagesLoaded]);
 
   // Fetch chat history for sidebar
   const fetchHistory = useCallback(async () => {
@@ -252,6 +285,25 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
 
       if (!expanded) setExpanded(true);
 
+      // Auto-create a session if we don't have one
+      let currentSessionId = sessionId;
+      if (!currentSessionId) {
+        try {
+          const sessRes = await fetch("/api/chat/sessions", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ briefId: brief.id, title: trimmed.slice(0, 80) }),
+          });
+          if (sessRes.ok) {
+            const sessData = await sessRes.json();
+            currentSessionId = sessData.sessionId;
+            setSessionId(currentSessionId);
+          }
+        } catch {
+          // Continue without session — server will use default
+        }
+      }
+
       const userMessage: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -277,6 +329,7 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             briefId: brief.id,
+            sessionId: currentSessionId,
             messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
           }),
           signal: abortRef.current.signal,
@@ -341,7 +394,7 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
         abortRef.current = null;
       }
     },
-    [input, streaming, messages, brief.id, expanded]
+    [input, streaming, messages, brief.id, expanded, sessionId]
   );
 
   const handleKeyDown = useCallback(
@@ -354,17 +407,51 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
     [handleSubmit]
   );
 
-  const handleClear = useCallback(() => {
+  const handleNewChat = useCallback(() => {
     if (streaming) {
       abortRef.current?.abort();
     }
     setMessages([]);
+    setSessionId(null);
     setCodeViewerOpen(false);
     setActiveFile(null);
     setActiveLine(null);
     setActiveLineEnd(null);
     setViewerFiles([]);
+    setMessagesLoaded(true); // Don't auto-load old messages
+    inputRef.current?.focus();
   }, [streaming]);
+
+  const handleDeleteSession = useCallback(async (delSessionId: string) => {
+    try {
+      await fetch(`/api/chat/sessions?sessionId=${delSessionId}`, { method: "DELETE" });
+      // If we deleted the active session, start fresh
+      if (delSessionId === sessionId) {
+        handleNewChat();
+      }
+      // Refresh history
+      fetchHistory();
+    } catch {
+      // Silently fail
+    }
+  }, [sessionId, handleNewChat, fetchHistory]);
+
+  const handleLoadSession = useCallback(async (loadSessionId: string, briefId: string) => {
+    if (streaming) return;
+    // Navigate to the brief if it's different
+    if (briefId !== brief.id && onNavigateToBrief) {
+      onNavigateToBrief(briefId);
+    }
+    setSessionId(loadSessionId);
+    setMessages([]);
+    setMessagesLoaded(false);
+    setCodeViewerOpen(false);
+    setActiveFile(null);
+    setActiveLine(null);
+    setActiveLineEnd(null);
+    setViewerFiles([]);
+    setHistoryOpen(false);
+  }, [streaming, brief.id, onNavigateToBrief]);
 
   // ─── Markdown renderer with [[file:...]] support ───
 
@@ -784,9 +871,29 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
           </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
-          {messages.length > 0 && (
+          <button
+            onClick={handleNewChat}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 5,
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "none",
+              background: "transparent",
+              color: "var(--foreground-secondary)",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+            className="sidebar-btn-hover"
+            title="Start a new chat"
+          >
+            <Plus size={13} />
+            New Chat
+          </button>
+          {messages.length > 0 && sessionId && (
             <button
-              onClick={handleClear}
+              onClick={() => handleDeleteSession(sessionId)}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -800,9 +907,9 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
                 cursor: "pointer",
               }}
               className="sidebar-btn-hover"
+              title="Delete this chat"
             >
               <Trash2 size={13} />
-              Clear
             </button>
           )}
           <button
@@ -828,7 +935,7 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
 
       {/* Main area: history sidebar + chat + optional code viewer */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        {/* Chat history sidebar */}
+        {/* Chat history sidebar — sessions grouped by repo */}
         {historyOpen && (
           <div
             style={{
@@ -845,14 +952,42 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
             <div
               style={{
                 padding: "14px 16px 10px",
-                fontSize: 12,
-                fontWeight: 500,
-                color: "rgb(120,119,116)",
-                textTransform: "uppercase",
-                letterSpacing: "0.04em",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
               }}
             >
-              Chat History
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 500,
+                  color: "rgb(120,119,116)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.04em",
+                }}
+              >
+                Chat History
+              </span>
+              <button
+                onClick={handleNewChat}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 4,
+                  padding: "3px 8px",
+                  borderRadius: 5,
+                  border: "none",
+                  background: "none",
+                  color: "rgb(120,119,116)",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+                className="sidebar-btn-hover"
+                title="Start a new chat"
+              >
+                <Plus size={12} />
+                New
+              </button>
             </div>
             <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
               {historyLoading ? (
@@ -871,82 +1006,176 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
                   No chat history yet
                 </div>
               ) : (
-                conversations.map((conv) => {
-                  const isActive = conv.briefId === brief.id;
-                  const preview =
-                    conv.lastRole === "user"
-                      ? conv.lastMessage
-                      : conv.lastMessage.replace(/\[\[file:[^\]]+\]\]/g, "").trim();
-                  const timeAgo = formatTimeAgo(conv.lastTimestamp);
-                  return (
-                    <button
-                      key={conv.briefId}
-                      onClick={() => {
-                        if (conv.briefId !== brief.id && onNavigateToBrief) {
-                          onNavigateToBrief(conv.briefId);
-                        }
-                        setHistoryOpen(false);
-                      }}
-                      className="sidebar-btn-hover"
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        padding: "10px 10px",
-                        background: isActive ? "rgba(55,53,47,0.06)" : "none",
-                        border: "none",
-                        cursor: "pointer",
-                        borderRadius: 6,
-                        textAlign: "left",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          fontWeight: isActive ? 500 : 400,
-                          color: isActive ? "rgb(55,53,47)" : "rgb(100,99,97)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          marginBottom: 3,
-                        }}
-                      >
-                        {conv.repoName}
+                (() => {
+                  // Group conversations by repo
+                  const repoGroups = new Map<string, { repoName: string; briefId: string; sessions: ChatConversation[] }>();
+                  for (const conv of conversations) {
+                    const key = conv.briefId;
+                    if (!repoGroups.has(key)) {
+                      repoGroups.set(key, { repoName: conv.repoName, briefId: conv.briefId, sessions: [] });
+                    }
+                    repoGroups.get(key)!.sessions.push(conv);
+                  }
+
+                  return Array.from(repoGroups.values()).map((group) => {
+                    const isCurrentRepo = group.briefId === brief.id;
+                    const isExpanded = expandedRepos.has(group.briefId) || isCurrentRepo;
+                    return (
+                      <div key={group.briefId} style={{ marginBottom: 4 }}>
+                        {/* Repo folder header */}
+                        <button
+                          onClick={() => {
+                            setExpandedRepos((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(group.briefId)) {
+                                next.delete(group.briefId);
+                              } else {
+                                next.add(group.briefId);
+                              }
+                              return next;
+                            });
+                          }}
+                          className="sidebar-btn-hover"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            width: "100%",
+                            padding: "6px 8px",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            borderRadius: 5,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: isCurrentRepo ? "rgb(55,53,47)" : "rgb(100,99,97)",
+                          }}
+                        >
+                          <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>
+                            <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" style={{ flexShrink: 0, opacity: 0.5 }}>
+                            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                          </svg>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
+                            {group.repoName}
+                          </span>
+                          <span style={{ fontSize: 10, color: "rgb(180,179,176)", flexShrink: 0 }}>
+                            {group.sessions.length}
+                          </span>
+                        </button>
+
+                        {/* Session list within repo */}
+                        {isExpanded && (
+                          <div style={{ paddingLeft: 12 }}>
+                            {group.sessions.map((conv) => {
+                              const isActive = conv.sessionId === sessionId;
+                              const preview =
+                                conv.lastRole === "user"
+                                  ? conv.lastMessage
+                                  : conv.lastMessage.replace(/\[\[file:[^\]]+\]\]/g, "").trim();
+                              const timeAgo = formatTimeAgo(conv.lastTimestamp);
+                              return (
+                                <div
+                                  key={conv.sessionId}
+                                  style={{ position: "relative" }}
+                                  className="chat-history-item"
+                                >
+                                  <button
+                                    onClick={() => handleLoadSession(conv.sessionId, conv.briefId)}
+                                    className="sidebar-btn-hover"
+                                    style={{
+                                      display: "block",
+                                      width: "100%",
+                                      padding: "8px 10px",
+                                      background: isActive ? "rgba(55,53,47,0.06)" : "none",
+                                      border: "none",
+                                      cursor: "pointer",
+                                      borderRadius: 5,
+                                      textAlign: "left",
+                                    }}
+                                  >
+                                    <div
+                                      style={{
+                                        fontSize: 13,
+                                        fontWeight: isActive ? 500 : 400,
+                                        color: isActive ? "rgb(55,53,47)" : "rgb(100,99,97)",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        marginBottom: 3,
+                                      }}
+                                    >
+                                      {conv.title}
+                                    </div>
+                                    <div
+                                      style={{
+                                        fontSize: 12,
+                                        color: "rgb(160,159,156)",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                        marginBottom: 4,
+                                        lineHeight: 1.4,
+                                      }}
+                                    >
+                                      {preview.slice(0, 60)}
+                                      {preview.length > 60 ? "…" : ""}
+                                    </div>
+                                    <div
+                                      style={{
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        fontSize: 11,
+                                        color: "rgb(180,179,176)",
+                                      }}
+                                    >
+                                      <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                                        <MessageSquare size={10} />
+                                        {conv.messageCount}
+                                      </span>
+                                      <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                                        <Clock size={10} />
+                                        {timeAgo}
+                                      </span>
+                                    </div>
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleDeleteSession(conv.sessionId);
+                                    }}
+                                    className="sidebar-btn-hover chat-history-delete"
+                                    style={{
+                                      position: "absolute",
+                                      top: 8,
+                                      right: 6,
+                                      width: 22,
+                                      height: 22,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      borderRadius: 4,
+                                      border: "none",
+                                      background: "none",
+                                      color: "rgb(180,179,176)",
+                                      cursor: "pointer",
+                                      opacity: 0,
+                                      transition: "opacity 0.15s",
+                                    }}
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "rgb(160,159,156)",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                          marginBottom: 4,
-                          lineHeight: 1.4,
-                        }}
-                      >
-                        {preview.slice(0, 80)}
-                        {preview.length > 80 ? "…" : ""}
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 8,
-                          fontSize: 11,
-                          color: "rgb(180,179,176)",
-                        }}
-                      >
-                        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                          <MessageSquare size={10} />
-                          {conv.messageCount}
-                        </span>
-                        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                          <Clock size={10} />
-                          {timeAgo}
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })
+                    );
+                  });
+                })()
               )}
             </div>
           </div>

@@ -3,6 +3,7 @@ import type { Database } from "@/lib/supabase/types";
 import type { ProjectBrief, ChatMessage } from "./types";
 
 type BriefInsert = Database["public"]["Tables"]["briefs"]["Insert"];
+type SessionInsert = Database["public"]["Tables"]["chat_sessions"]["Insert"];
 type ChatInsert = Database["public"]["Tables"]["chat_messages"]["Insert"];
 type UsageInsert = Database["public"]["Tables"]["usage"]["Insert"];
 
@@ -62,15 +63,96 @@ export async function deleteBrief(id: string): Promise<boolean> {
   return (data?.length ?? 0) > 0;
 }
 
-export async function getChatMessages(
+// ─── Chat Sessions ───
+
+export async function createChatSession(
+  briefId: string,
+  userId: string,
+  title?: string
+): Promise<string> {
+  const supabase = await createClient();
+  const id = crypto.randomUUID();
+  const row: SessionInsert = {
+    id,
+    brief_id: briefId,
+    user_id: userId,
+    title: title || "New chat",
+  };
+  const { error } = await supabase.from("chat_sessions").insert(row);
+  if (error) throw new Error(`Failed to create chat session: ${error.message}`);
+  return id;
+}
+
+export async function getChatSessionsForBrief(
   briefId: string
-): Promise<ChatMessage[]> {
+): Promise<{ id: string; title: string; createdAt: string; updatedAt: string }[]> {
   const supabase = await createClient();
   const { data, error } = await supabase
+    .from("chat_sessions")
+    .select("*")
+    .eq("brief_id", briefId)
+    .order("updated_at", { ascending: false });
+
+  if (error || !data) return [];
+  return data.map((row) => ({
+    id: row.id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function getChatSessionsForUser(
+  userId: string
+): Promise<{ id: string; briefId: string; title: string; createdAt: string; updatedAt: string }[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("chat_sessions")
+    .select("*")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false });
+
+  if (error || !data) return [];
+  return data.map((row) => ({
+    id: row.id,
+    briefId: row.brief_id,
+    title: row.title,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export async function updateChatSessionTitle(
+  sessionId: string,
+  title: string
+): Promise<void> {
+  const supabase = await createClient();
+  await supabase.from("chat_sessions").update({ title }).eq("id", sessionId);
+}
+
+export async function deleteChatSession(sessionId: string): Promise<void> {
+  const supabase = await createClient();
+  await supabase.from("chat_sessions").delete().eq("id", sessionId);
+}
+
+// ─── Chat Messages ───
+
+export async function getChatMessages(
+  briefId: string,
+  sessionId?: string
+): Promise<ChatMessage[]> {
+  const supabase = await createClient();
+  let query = supabase
     .from("chat_messages")
     .select("*")
     .eq("brief_id", briefId)
     .order("timestamp", { ascending: true });
+
+  if (sessionId) {
+    query = query.eq("session_id", sessionId);
+  }
+
+  const { data, error } = await query;
 
   if (error || !data) return [];
   return data.map((row) => ({
@@ -84,12 +166,14 @@ export async function getChatMessages(
 export async function addChatMessage(
   briefId: string,
   message: ChatMessage,
-  userId: string
+  userId: string,
+  sessionId?: string
 ): Promise<void> {
   const supabase = await createClient();
   const row: ChatInsert = {
     id: message.id,
     brief_id: briefId,
+    session_id: sessionId || briefId + "_default",
     user_id: userId,
     role: message.role,
     content: message.content,
@@ -97,6 +181,12 @@ export async function addChatMessage(
   };
   const { error } = await supabase.from("chat_messages").insert(row);
   if (error) throw new Error(`Failed to save chat message: ${error.message}`);
+
+  // Update session's updated_at timestamp
+  await supabase
+    .from("chat_sessions")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", row.session_id);
 }
 
 export async function clearChatMessages(briefId: string): Promise<void> {
