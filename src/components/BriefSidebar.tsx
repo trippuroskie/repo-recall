@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createClient } from "@/lib/supabase/client";
+import type { User } from "@supabase/supabase-js";
 import type { ProjectBrief } from "@/lib/types";
 
 // ─── Inline SVG Icons (Notion-style, thin stroke) ───
@@ -114,6 +116,23 @@ function IconPlus() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
       <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function IconCreditCard() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="1.5" y="3.5" width="13" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M1.5 6.5h13" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
+function IconLogOut() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M6 14H3.5A1.5 1.5 0 012 12.5v-9A1.5 1.5 0 013.5 2H6M11 11l3-3-3-3M5.5 8H14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -310,6 +329,12 @@ export function BriefSidebar({
             </button>
           );
         })}
+
+        {/* Spacer */}
+        <div style={{ flex: 1 }} />
+
+        {/* User avatar */}
+        <SidebarUserMenu collapsed />
       </div>
     );
   }
@@ -681,34 +706,156 @@ export function BriefSidebar({
         </div>
       </div>
 
-      {/* Footer — user */}
-      <div
+      {/* Footer — user profile */}
+      <SidebarUserMenu />
+    </div>
+  );
+}
+
+// ─── Sidebar User Menu ───
+function SidebarUserMenu({ collapsed = false }: { collapsed?: boolean }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const handleSignOut = async () => {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    window.location.href = "/";
+  };
+
+  if (!user) return null;
+
+  const avatar = user.user_metadata?.avatar_url;
+  const name =
+    user.user_metadata?.full_name ||
+    user.user_metadata?.user_name ||
+    user.email;
+  const email = user.email;
+
+  if (collapsed) {
+    return (
+      <div ref={ref} style={{ position: "relative", marginBottom: 10 }}>
+        <button
+          onClick={() => setOpen(!open)}
+          title={name ?? "Account"}
+          className="sidebar-btn-hover"
+          style={{
+            width: 32,
+            height: 32,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: open ? "rgba(55,53,47,0.06)" : "none",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: "50%",
+            padding: 0,
+            overflow: "hidden",
+          }}
+        >
+          {avatar ? (
+            <img src={avatar} alt="" width={28} height={28} style={{ borderRadius: "50%" }} />
+          ) : (
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: "50%",
+                backgroundColor: "rgba(55,53,47,0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 11,
+                fontWeight: 600,
+                color: "rgb(55,53,47)",
+              }}
+            >
+              {(name ?? "?").charAt(0).toUpperCase()}
+            </div>
+          )}
+        </button>
+
+        {open && (
+          <SidebarUserDropdown
+            name={name}
+            email={email}
+            onSignOut={handleSignOut}
+            onClose={() => setOpen(false)}
+            style={{ left: 44, bottom: 0 }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div ref={ref} style={{ position: "relative" }}>
+      <button
+        onClick={() => setOpen(!open)}
+        className="sidebar-btn-hover"
         style={{
-          padding: "12px 16px",
+          width: "100%",
+          padding: "10px 16px",
           borderTop: "1px solid rgba(55,53,47,0.06)",
           display: "flex",
           alignItems: "center",
           gap: 8,
           fontSize: 13,
           color: "rgb(100,99,97)",
+          background: open ? "rgba(55,53,47,0.04)" : "none",
+          border: "none",
+          cursor: "pointer",
         }}
       >
-        <div
-          style={{
-            width: 24,
-            height: 24,
-            borderRadius: "50%",
-            backgroundColor: "rgba(55,53,47,0.06)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontSize: 11,
-            fontWeight: 600,
-            color: "rgb(55,53,47)",
-          }}
-        >
-          {brief.repoInfo.owner.charAt(0).toUpperCase()}
-        </div>
+        {avatar ? (
+          <img
+            src={avatar}
+            alt=""
+            width={24}
+            height={24}
+            style={{ borderRadius: "50%", flexShrink: 0 }}
+          />
+        ) : (
+          <div
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: "50%",
+              backgroundColor: "rgba(55,53,47,0.08)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 11,
+              fontWeight: 600,
+              color: "rgb(55,53,47)",
+              flexShrink: 0,
+            }}
+          >
+            {(name ?? "?").charAt(0).toUpperCase()}
+          </div>
+        )}
         <span
           style={{
             overflow: "hidden",
@@ -716,9 +863,123 @@ export function BriefSidebar({
             whiteSpace: "nowrap",
           }}
         >
-          {brief.repoInfo.owner}
+          {name}
         </span>
+      </button>
+
+      {open && (
+        <SidebarUserDropdown
+          name={name}
+          email={email}
+          onSignOut={handleSignOut}
+          onClose={() => setOpen(false)}
+          style={{ left: 0, bottom: "100%", marginBottom: 4 }}
+        />
+      )}
+    </div>
+  );
+}
+
+function SidebarUserDropdown({
+  name,
+  email,
+  onSignOut,
+  onClose,
+  style,
+}: {
+  name: string | null | undefined;
+  email: string | undefined;
+  onSignOut: () => void;
+  onClose: () => void;
+  style?: React.CSSProperties;
+}) {
+  return (
+    <div
+      style={{
+        position: "absolute",
+        width: 220,
+        backgroundColor: "#fff",
+        border: "1px solid rgba(55,53,47,0.12)",
+        borderRadius: 8,
+        boxShadow: "0 4px 16px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.06)",
+        zIndex: 100,
+        padding: "4px 0",
+        ...style,
+      }}
+    >
+      {/* User info */}
+      <div
+        style={{
+          padding: "10px 14px",
+          borderBottom: "1px solid rgba(55,53,47,0.06)",
+        }}
+      >
+        <div
+          style={{
+            fontSize: 13,
+            fontWeight: 500,
+            color: "rgb(55,53,47)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+          }}
+        >
+          {name}
+        </div>
+        <div
+          style={{
+            fontSize: 12,
+            color: "rgb(120,119,116)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            marginTop: 2,
+          }}
+        >
+          {email}
+        </div>
       </div>
+
+      {/* Billing */}
+      <a
+        href="/billing"
+        onClick={onClose}
+        className="sidebar-btn-hover"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "7px 14px",
+          fontSize: 13,
+          color: "rgb(100,99,97)",
+          textDecoration: "none",
+          cursor: "pointer",
+        }}
+      >
+        <IconCreditCard />
+        Billing
+      </a>
+
+      {/* Sign out */}
+      <button
+        onClick={onSignOut}
+        className="sidebar-btn-hover"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          width: "100%",
+          padding: "7px 14px",
+          fontSize: 13,
+          color: "rgb(100,99,97)",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+        }}
+      >
+        <IconLogOut />
+        Sign out
+      </button>
     </div>
   );
 }
