@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { ArrowRight, X, Loader2, Trash2, ChevronDown, MessageSquare, History, Clock, Plus } from "lucide-react";
 import { CodeViewer } from "@/components/CodeViewer";
 import { HighlightedCode } from "@/components/HighlightedCode";
+import { MermaidChart } from "@/components/MermaidChart";
 import type { ProjectBrief } from "@/lib/types";
 
 interface ChatConversation {
@@ -29,6 +30,7 @@ interface ChatMessage {
 interface ChatPanelProps {
   brief: ProjectBrief;
   onNavigateToBrief?: (briefId: string) => void;
+  initialSessionId?: string;
 }
 
 interface FileRef {
@@ -121,8 +123,55 @@ function formatTimeAgo(timestamp: string): string {
   return `${months}mo ago`;
 }
 
-export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
-  const [expanded, setExpanded] = useState(false);
+function ChatMermaidBlock({ chart }: { chart: string }) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  return (
+    <div style={{ margin: "12px 0" }}>
+      <button
+        onClick={() => setCollapsed((p) => !p)}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          padding: "6px 10px",
+          borderRadius: "8px 8px " + (collapsed ? "8px 8px" : "0 0"),
+          border: "1px solid rgba(55,53,47,0.08)",
+          borderBottom: collapsed ? undefined : "none",
+          background: "rgba(55,53,47,0.02)",
+          color: "rgb(100,99,97)",
+          fontSize: 12,
+          fontWeight: 500,
+          cursor: "pointer",
+          width: "100%",
+        }}
+      >
+        <svg
+          width="10"
+          height="10"
+          viewBox="0 0 16 16"
+          fill="none"
+          style={{ transform: collapsed ? "rotate(-90deg)" : "rotate(0deg)", transition: "transform 0.15s" }}
+        >
+          <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.5 }}>
+          <path d="M1 3h6v4H1zM9 3h6v4H9zM5 9h6v4H5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+          <path d="M4 7v2M11 7v2M8 7v2" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+        </svg>
+        Diagram
+      </button>
+      {!collapsed && (
+        <div style={{ border: "1px solid rgba(55,53,47,0.08)", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
+          <MermaidChart chart={chart} className="chat-mermaid" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPanelProps) {
+  const [expanded, setExpanded] = useState(!!initialSessionId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -137,6 +186,8 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
   const [messagesLoaded, setMessagesLoaded] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [expandedRepos, setExpandedRepos] = useState<Set<string>>(new Set());
+  const [searchMode, setSearchMode] = useState<"fast" | "deep">("fast");
+  const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -165,8 +216,9 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
     setActiveLineEnd(null);
     setViewerFiles([]);
     setMessagesLoaded(false);
-    setSessionId(null);
-  }, [brief.id]);
+    setSessionId(initialSessionId ?? null);
+    if (initialSessionId) setExpanded(true);
+  }, [brief.id, initialSessionId]);
 
   // Load persisted messages from DB when brief or session changes
   useEffect(() => {
@@ -331,6 +383,7 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
             briefId: brief.id,
             sessionId: currentSessionId,
             messages: newMessages.map((m) => ({ role: m.role, content: m.content })),
+            mode: searchMode,
           }),
           signal: abortRef.current.signal,
         });
@@ -394,7 +447,7 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
         abortRef.current = null;
       }
     },
-    [input, streaming, messages, brief.id, expanded, sessionId]
+    [input, streaming, messages, brief.id, expanded, sessionId, searchMode]
   );
 
   const handleKeyDown = useCallback(
@@ -464,9 +517,16 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
       const block = blocks[i];
       const codeMatch = block.match(/^```(\w*)\n([\s\S]*?)```$/);
       if (codeMatch) {
-        elements.push(
-          <HighlightedCode key={i} code={codeMatch[2]} language={codeMatch[1] || "text"} />
-        );
+        const lang = codeMatch[1].toLowerCase();
+        if (lang === "mermaid") {
+          elements.push(
+            <ChatMermaidBlock key={i} chart={codeMatch[2]} />
+          );
+        } else {
+          elements.push(
+            <HighlightedCode key={i} code={codeMatch[2]} language={codeMatch[1] || "text"} />
+          );
+        }
       } else {
         elements.push(<span key={i}>{renderParagraphs(block)}</span>);
       }
@@ -772,34 +832,110 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
             </button>
           </form>
 
-          <div style={{ display: "flex", alignItems: "center", marginTop: 8, paddingLeft: 4 }}>
-            <button
-              type="button"
-              onClick={() => messages.length > 0 && setExpanded(true)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 6,
-                padding: "4px 10px",
-                borderRadius: 8,
-                border: "1px solid var(--border)",
-                background: "#ffffff",
-                color: "var(--foreground-secondary)",
-                fontSize: 13,
-                cursor: "pointer",
-                fontWeight: 500,
-              }}
-              className="sidebar-btn-hover"
-            >
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.6 }}>
-                <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-                <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-                <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-                <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-              </svg>
-              RepoRecall
-              <ChevronDown size={12} style={{ opacity: 0.5 }} />
-            </button>
+          <div style={{ display: "flex", alignItems: "center", marginTop: 8, paddingLeft: 4, gap: 6 }}>
+            <div style={{ position: "relative" }}>
+              <button
+                type="button"
+                onClick={() => setModeDropdownOpen((p) => !p)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                  padding: "4px 10px",
+                  borderRadius: 8,
+                  border: "1px solid var(--border)",
+                  background: "#ffffff",
+                  color: "var(--foreground-secondary)",
+                  fontSize: 13,
+                  cursor: "pointer",
+                  fontWeight: 500,
+                }}
+                className="sidebar-btn-hover"
+              >
+                {searchMode === "fast" ? (
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.6 }}>
+                    <path d="M9 1L3 9h5l-1 6 6-8H8l1-6z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                  </svg>
+                ) : (
+                  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.6 }}>
+                    <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+                    <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                    <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+                  </svg>
+                )}
+                {searchMode === "fast" ? "Fast" : "Deep"}
+                <ChevronDown size={11} style={{ opacity: 0.5 }} />
+              </button>
+              {modeDropdownOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    bottom: "calc(100% + 4px)",
+                    left: 0,
+                    background: "#fff",
+                    border: "1px solid rgba(55,53,47,0.12)",
+                    borderRadius: 8,
+                    boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                    padding: 4,
+                    zIndex: 60,
+                    minWidth: 160,
+                  }}
+                >
+                  <button
+                    onClick={() => { setSearchMode("fast"); setModeDropdownOpen(false); }}
+                    className="sidebar-btn-hover"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "7px 10px",
+                      background: searchMode === "fast" ? "rgba(55,53,47,0.06)" : "none",
+                      border: "none",
+                      borderRadius: 5,
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: "rgb(55,53,47)",
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                      <path d="M9 1L3 9h5l-1 6 6-8H8l1-6z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                    </svg>
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ fontWeight: 500 }}>Fast</div>
+                      <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Quick responses, fewer files</div>
+                    </div>
+                  </button>
+                  <button
+                    onClick={() => { setSearchMode("deep"); setModeDropdownOpen(false); }}
+                    className="sidebar-btn-hover"
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "7px 10px",
+                      background: searchMode === "deep" ? "rgba(55,53,47,0.06)" : "none",
+                      border: "none",
+                      borderRadius: 5,
+                      cursor: "pointer",
+                      fontSize: 13,
+                      color: "rgb(55,53,47)",
+                    }}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                      <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+                      <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                      <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+                    </svg>
+                    <div style={{ textAlign: "left" }}>
+                      <div style={{ fontWeight: 500 }}>Deep</div>
+                      <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Thorough analysis, more files</div>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -1354,32 +1490,109 @@ export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
             </form>
             <div style={{ maxWidth: codeViewerOpen ? "none" : 720, margin: "0 auto" }}>
               <div style={{ display: "flex", alignItems: "center", marginTop: 8, paddingLeft: 2 }}>
-                <button
-                  type="button"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    padding: "4px 10px",
-                    borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    background: "#ffffff",
-                    color: "var(--foreground-secondary)",
-                    fontSize: 13,
-                    cursor: "pointer",
-                    fontWeight: 500,
-                  }}
-                  className="sidebar-btn-hover"
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.6 }}>
-                    <rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-                    <rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-                    <rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-                    <rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" strokeWidth="1.3" />
-                  </svg>
-                  RepoRecall
-                  <ChevronDown size={12} style={{ opacity: 0.5 }} />
-                </button>
+                <div style={{ position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={() => setModeDropdownOpen((p) => !p)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 5,
+                      padding: "4px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      background: "#ffffff",
+                      color: "var(--foreground-secondary)",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                    className="sidebar-btn-hover"
+                  >
+                    {searchMode === "fast" ? (
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.6 }}>
+                        <path d="M9 1L3 9h5l-1 6 6-8H8l1-6z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                      </svg>
+                    ) : (
+                      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ opacity: 0.6 }}>
+                        <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+                        <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                        <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+                      </svg>
+                    )}
+                    {searchMode === "fast" ? "Fast" : "Deep"}
+                    <ChevronDown size={11} style={{ opacity: 0.5 }} />
+                  </button>
+                  {modeDropdownOpen && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 4px)",
+                        left: 0,
+                        background: "#fff",
+                        border: "1px solid rgba(55,53,47,0.12)",
+                        borderRadius: 8,
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.08)",
+                        padding: 4,
+                        zIndex: 60,
+                        minWidth: 160,
+                      }}
+                    >
+                      <button
+                        onClick={() => { setSearchMode("fast"); setModeDropdownOpen(false); }}
+                        className="sidebar-btn-hover"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          width: "100%",
+                          padding: "7px 10px",
+                          background: searchMode === "fast" ? "rgba(55,53,47,0.06)" : "none",
+                          border: "none",
+                          borderRadius: 5,
+                          cursor: "pointer",
+                          fontSize: 13,
+                          color: "rgb(55,53,47)",
+                        }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                          <path d="M9 1L3 9h5l-1 6 6-8H8l1-6z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+                        </svg>
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ fontWeight: 500 }}>Fast</div>
+                          <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Quick responses, fewer files</div>
+                        </div>
+                      </button>
+                      <button
+                        onClick={() => { setSearchMode("deep"); setModeDropdownOpen(false); }}
+                        className="sidebar-btn-hover"
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          width: "100%",
+                          padding: "7px 10px",
+                          background: searchMode === "deep" ? "rgba(55,53,47,0.06)" : "none",
+                          border: "none",
+                          borderRadius: 5,
+                          cursor: "pointer",
+                          fontSize: 13,
+                          color: "rgb(55,53,47)",
+                        }}
+                      >
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+                          <circle cx="7" cy="7" r="4.5" stroke="currentColor" strokeWidth="1.3" />
+                          <path d="M10.5 10.5L14 14" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+                          <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+                        </svg>
+                        <div style={{ textAlign: "left" }}>
+                          <div style={{ fontWeight: 500 }}>Deep</div>
+                          <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Thorough analysis, more files</div>
+                        </div>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

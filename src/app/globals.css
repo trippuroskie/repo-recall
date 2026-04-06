@@ -603,3 +603,9 @@ body {
 .mermaid-container .edgeLabel {
   font-size: 11px;
 }
+
+.mermaid-container.chat-mermaid {
+  margin-bottom: 0;
+  border-radius: 0;
+  border: none;
+}

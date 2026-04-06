@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { BriefSidebar } from "@/components/BriefSidebar";
 import { OverviewSection } from "@/components/sections/OverviewSection";
 import { ArchitectureSection } from "@/components/sections/ArchitectureSection";
@@ -24,6 +24,7 @@ import { formatDistanceToNow } from "date-fns";
 export default function BriefPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [brief, setBrief] = useState<ProjectBrief | null>(null);
   const [allBriefs, setAllBriefs] = useState<ProjectBrief[]>([]);
   const [loading, setLoading] = useState(true);
@@ -187,7 +188,7 @@ export default function BriefPage() {
           style={{
             width: "100%",
             maxWidth: isCodemap ? "none" : 760,
-            padding: isCodemap ? "0" : "32px 48px 80px",
+            padding: isCodemap ? "0" : "32px 48px 140px",
           }}
         >
           {/* Breadcrumb (hidden in codemap mode) */}
@@ -277,7 +278,7 @@ export default function BriefPage() {
       </div>
 
       {/* Chat */}
-      <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} />
+      <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} initialSessionId={searchParams.get("chat") ?? undefined} />
     </div>
   );
 }

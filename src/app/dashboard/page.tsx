@@ -14,18 +14,39 @@ import {
   Trash2,
   Plus,
   Search,
+  MessageSquare,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import Link from "next/link";
 import { formatDistanceToNow } from "date-fns";
+
+interface ChatConversation {
+  sessionId: string;
+  briefId: string;
+  title: string;
+  repoFullName: string;
+  repoName: string;
+  repoOwner: string;
+  lastMessage: string;
+  lastRole: string;
+  lastTimestamp: string;
+  messageCount: number;
+  createdAt: string;
+}
 
 export default function DashboardPage() {
   const [briefs, setBriefs] = useState<ProjectBrief[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [chatHistory, setChatHistory] = useState<ChatConversation[]>([]);
+  const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
+  const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
 
   useEffect(() => {
     fetchBriefs();
+    fetchChatHistory();
   }, []);
 
   async function fetchBriefs() {
@@ -37,6 +58,21 @@ export default function DashboardPage() {
       // silently fail
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function fetchChatHistory() {
+    setChatHistoryLoading(true);
+    try {
+      const res = await fetch("/api/chat/history");
+      if (res.ok) {
+        const data = await res.json();
+        setChatHistory(data.conversations ?? []);
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setChatHistoryLoading(false);
     }
   }
 
@@ -214,6 +250,90 @@ export default function DashboardPage() {
             ))}
           </div>
         )}
+
+        {/* Chat History Section */}
+        <div className="mt-10">
+          <button
+            onClick={() => setChatHistoryOpen((p) => !p)}
+            className="flex items-center gap-2 mb-4 group"
+          >
+            {chatHistoryOpen ? <ChevronDown size={16} className="text-foreground-secondary" /> : <ChevronRight size={16} className="text-foreground-secondary" />}
+            <h2 className="text-lg font-bold text-foreground tracking-tight">
+              Chat History
+            </h2>
+            {chatHistory.length > 0 && (
+              <span className="text-xs text-foreground-secondary/70 bg-surface px-2 py-0.5 rounded-full">
+                {chatHistory.length}
+              </span>
+            )}
+          </button>
+
+          {chatHistoryOpen && (
+            <div className="animate-fade-in">
+              {chatHistoryLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin text-foreground-secondary">
+                    <Clock size={16} />
+                  </div>
+                </div>
+              ) : chatHistory.length === 0 ? (
+                <div className="border border-dashed border-border rounded-xl p-8 text-center">
+                  <p className="text-foreground-secondary text-sm">
+                    No chat history yet. Start a conversation from any brief.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {(() => {
+                    // Group by repo
+                    const groups = new Map<string, { repoName: string; briefId: string; sessions: ChatConversation[] }>();
+                    for (const conv of chatHistory) {
+                      if (!groups.has(conv.briefId)) {
+                        groups.set(conv.briefId, { repoName: conv.repoName, briefId: conv.briefId, sessions: [] });
+                      }
+                      groups.get(conv.briefId)!.sessions.push(conv);
+                    }
+                    return Array.from(groups.values()).map((group) => (
+                      <div key={group.briefId} className="border border-border rounded-xl overflow-hidden">
+                        <div className="px-4 py-2.5 bg-surface/50 border-b border-border flex items-center gap-2">
+                          <MessageSquare size={13} className="text-foreground-secondary" />
+                          <span className="text-sm font-medium text-foreground">{group.repoName}</span>
+                          <span className="text-xs text-foreground-secondary/60">{group.sessions.length} chat(s)</span>
+                        </div>
+                        {group.sessions.map((conv, i) => (
+                          <Link
+                            key={conv.sessionId}
+                            href={`/brief/${conv.briefId}?chat=${conv.sessionId}`}
+                            className={`block px-4 py-3 hover:bg-surface-hover/50 transition-colors ${i > 0 ? "border-t border-border" : ""}`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium text-foreground truncate">{conv.title}</p>
+                                <p className="text-xs text-foreground-secondary truncate mt-0.5">
+                                  {conv.lastMessage.replace(/\[\[file:[^\]]+\]\]/g, "").slice(0, 80)}
+                                </p>
+                              </div>
+                              <div className="flex items-center gap-3 text-xs text-foreground-secondary/60 shrink-0">
+                                <span className="flex items-center gap-1">
+                                  <MessageSquare size={10} />
+                                  {conv.messageCount}
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Clock size={10} />
+                                  {formatDistanceToNow(new Date(conv.lastTimestamp), { addSuffix: true })}
+                                </span>
+                              </div>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    ));
+                  })()}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

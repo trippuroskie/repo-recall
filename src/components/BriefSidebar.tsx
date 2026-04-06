@@ -158,6 +158,17 @@ function IconCodemap() {
   );
 }
 
+function IconDashboard() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <rect x="1.5" y="1.5" width="5" height="7" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="9.5" y="1.5" width="5" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="1.5" y="10.5" width="5" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" />
+      <rect x="9.5" y="7.5" width="5" height="7" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
 // ─── Section definitions ───
 const briefSections = [
   { id: "overview", icon: IconFileText, label: "Overview" },
@@ -237,6 +248,29 @@ export function BriefSidebar({
         >
           <IconSidebar />
         </button>
+
+        {/* Dashboard */}
+        <a
+          href="/dashboard"
+          title="Dashboard"
+          className="sidebar-btn-hover"
+          style={{
+            width: 32,
+            height: 32,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "none",
+            border: "none",
+            cursor: "pointer",
+            borderRadius: 4,
+            color: "rgb(160,159,156)",
+            textDecoration: "none",
+            marginBottom: 4,
+          }}
+        >
+          <IconDashboard />
+        </a>
 
         {/* Repos */}
         {allBriefs.map((b) => {
@@ -383,24 +417,46 @@ export function BriefSidebar({
             RepoRecall
           </span>
         </div>
-        <button
-          onClick={onToggleCollapse}
-          className="sidebar-btn-subtle"
-          style={{
-            width: 24,
-            height: 24,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            borderRadius: 4,
-            color: "rgb(160,159,156)",
-          }}
-        >
-          <IconSidebar />
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
+          <a
+            href="/dashboard"
+            title="Dashboard"
+            className="sidebar-btn-subtle"
+            style={{
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: 4,
+              color: "rgb(160,159,156)",
+              textDecoration: "none",
+            }}
+          >
+            <IconDashboard />
+          </a>
+          <button
+            onClick={onToggleCollapse}
+            className="sidebar-btn-subtle"
+            style={{
+              width: 24,
+              height: 24,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              borderRadius: 4,
+              color: "rgb(160,159,156)",
+            }}
+          >
+            <IconSidebar />
+          </button>
+        </div>
       </div>
 
       {/* Search */}

@@ -25,10 +25,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { briefId, sessionId, messages } = (await request.json()) as {
+    const { briefId, sessionId, messages, mode } = (await request.json()) as {
       briefId: string;
       sessionId?: string;
       messages: { role: "user" | "assistant"; content: string }[];
+      mode?: "fast" | "deep";
     };
 
     if (!briefId || !messages?.length) {
@@ -58,7 +59,8 @@ export async function POST(request: NextRequest) {
 
     // Fetch relevant file contents so the model can reference specific lines
     const userQuery = messages[messages.length - 1]?.content || "";
-    const relevantFiles = selectRelevantFiles(brief, userQuery);
+    const isDeep = mode === "deep";
+    const relevantFiles = selectRelevantFiles(brief, userQuery, isDeep ? 10 : 5);
     let fileContext = "";
     if (relevantFiles.length > 0) {
       const token = (await getGitHubToken(user.id)) || undefined;
@@ -66,7 +68,8 @@ export async function POST(request: NextRequest) {
         brief.repoInfo.owner,
         brief.repoInfo.name,
         relevantFiles,
-        token
+        token,
+        isDeep ? 60_000 : 30_000
       );
       if (fetched.length > 0) {
         fileContext = "\n\n---\n\n## Source Files (with line numbers)\nUse these to reference specific code lines with [[file:path:line]] syntax.\n\n";
@@ -114,7 +117,9 @@ export async function POST(request: NextRequest) {
             "X-Title": "RepoRecall",
           },
           body: JSON.stringify({
-            model: process.env.CHAT_MODEL || "google/gemini-3-flash-preview",
+            model: isDeep
+              ? (process.env.CHAT_MODEL_DEEP || "google/gemini-2.5-pro-preview")
+              : (process.env.CHAT_MODEL || "google/gemini-3-flash-preview"),
             stream: true,
             messages: [
               { role: "system", content: systemMessage },
@@ -245,7 +250,7 @@ function looksLikeFile(path: string): boolean {
 }
 
 // Collect all known file paths from the brief, scored by relevance to the query
-function selectRelevantFiles(brief: ProjectBrief, query: string): string[] {
+function selectRelevantFiles(brief: ProjectBrief, query: string, limit = 5): string[] {
   const queryLower = query.toLowerCase();
   const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
 
@@ -285,9 +290,9 @@ function selectRelevantFiles(brief: ProjectBrief, query: string): string[] {
     addFile(mod.path, 1, `${mod.name} ${mod.purpose}`);
   }
 
-  // Sort by score descending, take top 5
+  // Sort by score descending, take top N
   scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, 5).map((s) => s.path);
+  return scored.slice(0, limit).map((s) => s.path);
 }
 
 // Fetch file contents in parallel, with a total size cap
@@ -295,9 +300,10 @@ async function fetchRelevantFiles(
   owner: string,
   repo: string,
   paths: string[],
-  token?: string
+  token?: string,
+  maxTotalChars = 30_000
 ): Promise<{ path: string; content: string }[]> {
-  const MAX_TOTAL_CHARS = 30_000; // Keep context reasonable
+  const MAX_TOTAL_CHARS = maxTotalChars;
   const MAX_FILE_CHARS = 10_000;
 
   const results = await Promise.allSettled(
