@@ -277,7 +277,7 @@ export default function BriefPage() {
       </div>
 
       {/* Chat */}
-      <ChatPanel brief={brief} />
+      <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} />
     </div>
   );
 }

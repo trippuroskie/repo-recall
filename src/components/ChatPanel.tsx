@@ -1,10 +1,21 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowRight, X, Loader2, Trash2, ChevronDown, MessageSquare } from "lucide-react";
+import { ArrowRight, X, Loader2, Trash2, ChevronDown, MessageSquare, History, Clock } from "lucide-react";
 import { CodeViewer } from "@/components/CodeViewer";
 import { HighlightedCode } from "@/components/HighlightedCode";
 import type { ProjectBrief } from "@/lib/types";
+
+interface ChatConversation {
+  briefId: string;
+  repoFullName: string;
+  repoName: string;
+  repoOwner: string;
+  lastMessage: string;
+  lastRole: string;
+  lastTimestamp: string;
+  messageCount: number;
+}
 
 interface ChatMessage {
   id: string;
@@ -14,6 +25,7 @@ interface ChatMessage {
 
 interface ChatPanelProps {
   brief: ProjectBrief;
+  onNavigateToBrief?: (briefId: string) => void;
 }
 
 interface FileRef {
@@ -89,7 +101,24 @@ function getLatestFullRef(messages: ChatMessage[]): FileRef | null {
   return latest;
 }
 
-export function ChatPanel({ brief }: ChatPanelProps) {
+function formatTimeAgo(timestamp: string): string {
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  const seconds = Math.floor((now - then) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w ago`;
+  const months = Math.floor(days / 30);
+  return `${months}mo ago`;
+}
+
+export function ChatPanel({ brief, onNavigateToBrief }: ChatPanelProps) {
   const [expanded, setExpanded] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -99,6 +128,10 @@ export function ChatPanel({ brief }: ChatPanelProps) {
   const [activeLine, setActiveLine] = useState<number | null>(null);
   const [activeLineEnd, setActiveLineEnd] = useState<number | null>(null);
   const [viewerFiles, setViewerFiles] = useState<string[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -126,7 +159,58 @@ export function ChatPanel({ brief }: ChatPanelProps) {
     setActiveLine(null);
     setActiveLineEnd(null);
     setViewerFiles([]);
+    setMessagesLoaded(false);
   }, [brief.id]);
+
+  // Load persisted messages from DB when brief changes
+  useEffect(() => {
+    if (messagesLoaded) return;
+    let cancelled = false;
+    async function loadMessages() {
+      try {
+        const res = await fetch(`/api/chat/messages?briefId=${brief.id}`);
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (cancelled) return;
+        if (data.messages?.length > 0) {
+          setMessages(
+            data.messages.map((m: { id: string; role: string; content: string }) => ({
+              id: m.id,
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            }))
+          );
+        }
+      } catch {
+        // Silently fail — user can still start fresh
+      } finally {
+        if (!cancelled) setMessagesLoaded(true);
+      }
+    }
+    loadMessages();
+    return () => { cancelled = true; };
+  }, [brief.id, messagesLoaded]);
+
+  // Fetch chat history for sidebar
+  const fetchHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/chat/history");
+      if (res.ok) {
+        const data = await res.json();
+        setConversations(data.conversations ?? []);
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  // Load history when sidebar opens
+  useEffect(() => {
+    if (historyOpen) fetchHistory();
+  }, [historyOpen, fetchHistory]);
 
   // Auto-open code viewer when new file refs appear in messages
   useEffect(() => {
@@ -661,6 +745,25 @@ export function ChatPanel({ brief }: ChatPanelProps) {
       >
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button
+            onClick={() => setHistoryOpen((p) => !p)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 30,
+              height: 30,
+              borderRadius: 6,
+              border: "none",
+              background: historyOpen ? "rgba(55,53,47,0.06)" : "transparent",
+              color: "var(--foreground-secondary)",
+              cursor: "pointer",
+            }}
+            className="sidebar-btn-hover"
+            title="Chat history"
+          >
+            <History size={16} />
+          </button>
+          <button
             onClick={() => setExpanded(false)}
             style={{
               display: "flex",
@@ -723,8 +826,132 @@ export function ChatPanel({ brief }: ChatPanelProps) {
         </div>
       </div>
 
-      {/* Main area: chat + optional code viewer */}
+      {/* Main area: history sidebar + chat + optional code viewer */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+        {/* Chat history sidebar */}
+        {historyOpen && (
+          <div
+            style={{
+              width: 280,
+              flexShrink: 0,
+              borderRight: "1px solid var(--border)",
+              display: "flex",
+              flexDirection: "column",
+              overflow: "hidden",
+              backgroundColor: "#fbfbfa",
+              animation: "fadeIn 0.15s ease-out",
+            }}
+          >
+            <div
+              style={{
+                padding: "14px 16px 10px",
+                fontSize: 12,
+                fontWeight: 500,
+                color: "rgb(120,119,116)",
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+              }}
+            >
+              Chat History
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 8px 8px" }}>
+              {historyLoading ? (
+                <div style={{ display: "flex", justifyContent: "center", padding: 24 }}>
+                  <Loader2 size={16} className="animate-spin" style={{ color: "rgb(160,159,156)" }} />
+                </div>
+              ) : conversations.length === 0 ? (
+                <div
+                  style={{
+                    padding: "24px 8px",
+                    textAlign: "center",
+                    fontSize: 13,
+                    color: "rgb(160,159,156)",
+                  }}
+                >
+                  No chat history yet
+                </div>
+              ) : (
+                conversations.map((conv) => {
+                  const isActive = conv.briefId === brief.id;
+                  const preview =
+                    conv.lastRole === "user"
+                      ? conv.lastMessage
+                      : conv.lastMessage.replace(/\[\[file:[^\]]+\]\]/g, "").trim();
+                  const timeAgo = formatTimeAgo(conv.lastTimestamp);
+                  return (
+                    <button
+                      key={conv.briefId}
+                      onClick={() => {
+                        if (conv.briefId !== brief.id && onNavigateToBrief) {
+                          onNavigateToBrief(conv.briefId);
+                        }
+                        setHistoryOpen(false);
+                      }}
+                      className="sidebar-btn-hover"
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        padding: "10px 10px",
+                        background: isActive ? "rgba(55,53,47,0.06)" : "none",
+                        border: "none",
+                        cursor: "pointer",
+                        borderRadius: 6,
+                        textAlign: "left",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 13,
+                          fontWeight: isActive ? 500 : 400,
+                          color: isActive ? "rgb(55,53,47)" : "rgb(100,99,97)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          marginBottom: 3,
+                        }}
+                      >
+                        {conv.repoName}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "rgb(160,159,156)",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                          marginBottom: 4,
+                          lineHeight: 1.4,
+                        }}
+                      >
+                        {preview.slice(0, 80)}
+                        {preview.length > 80 ? "…" : ""}
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 11,
+                          color: "rgb(180,179,176)",
+                        }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                          <MessageSquare size={10} />
+                          {conv.messageCount}
+                        </span>
+                        <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                          <Clock size={10} />
+                          {timeAgo}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Chat messages + input */}
         <div
           style={{
