@@ -12,10 +12,13 @@ import { saveBrief, trackUsage, rollbackUsage, getGitHubToken } from "@/lib/stor
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "analyze");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
 
     // Check plan limits
     const limits = await checkPlanLimits(user.id);

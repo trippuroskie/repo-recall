@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { getChatMessages } from "@/lib/store";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   try {
-    await requireAuth();
+    const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
 
     const briefId = request.nextUrl.searchParams.get("briefId");
     if (!briefId) {

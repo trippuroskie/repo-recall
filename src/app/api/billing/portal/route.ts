@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { getStripe } from "@/lib/stripe";
 import { requireAuth } from "@/lib/auth";
 import { getProfile } from "@/lib/store";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "billing-portal");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
     const profile = await getProfile(user.id);
 
     if (!profile?.stripe_customer_id) {

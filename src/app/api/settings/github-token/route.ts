@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { createServiceClient } from "@/lib/supabase/server";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function GET() {
   try {
     const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
     const supabase = await createServiceClient();
 
     const { data } = await supabase
@@ -32,6 +35,8 @@ export async function GET() {
 export async function PUT(request: NextRequest) {
   try {
     const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
     const { token } = await request.json();
 
     if (!token || typeof token !== "string") {
@@ -64,6 +69,8 @@ export async function PUT(request: NextRequest) {
 export async function DELETE() {
   try {
     const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
     const supabase = await createServiceClient();
 
     const { error } = await supabase

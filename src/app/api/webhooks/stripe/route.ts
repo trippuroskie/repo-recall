@@ -37,12 +37,16 @@ export async function POST(request: NextRequest) {
         const subscription = await getStripe().subscriptions.retrieve(
           session.subscription as string
         ) as unknown as Record<string, unknown>;
+        const periodStart = subscription.current_period_start as number;
         const periodEnd = subscription.current_period_end as number;
         await supabase
           .from("profiles")
           .update({
             stripe_customer_id: session.customer as string,
             subscription_status: "pro",
+            subscription_period_start: periodStart
+              ? new Date(periodStart * 1000).toISOString()
+              : null,
             subscription_period_end: periodEnd
               ? new Date(periodEnd * 1000).toISOString()
               : null,
@@ -57,12 +61,16 @@ export async function POST(request: NextRequest) {
       const customerId = subscription.customer as string;
       const status =
         subscription.status === "active" ? "pro" : "cancelled";
+      const periodStart = subscription.current_period_start as number;
       const periodEnd = subscription.current_period_end as number;
 
       await supabase
         .from("profiles")
         .update({
           subscription_status: status,
+          subscription_period_start: periodStart
+            ? new Date(periodStart * 1000).toISOString()
+            : null,
           subscription_period_end: periodEnd
             ? new Date(periodEnd * 1000).toISOString()
             : null,
@@ -79,6 +87,7 @@ export async function POST(request: NextRequest) {
         .from("profiles")
         .update({
           subscription_status: "free",
+          subscription_period_start: null,
           subscription_period_end: null,
         })
         .eq("stripe_customer_id", customerId);

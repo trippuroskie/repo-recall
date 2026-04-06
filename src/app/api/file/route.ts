@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fetchFileContent } from "@/lib/github";
 import { getAuthUser } from "@/lib/auth";
 import { getGitHubToken } from "@/lib/store";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -19,6 +20,8 @@ export async function GET(request: NextRequest) {
   let token: string | undefined;
   const user = await getAuthUser();
   if (user) {
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
     token = (await getGitHubToken(user.id)) || undefined;
   }
 

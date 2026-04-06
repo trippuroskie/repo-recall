@@ -19,9 +19,15 @@ export async function checkPlanLimits(userId: string): Promise<PlanLimits> {
     profile?.subscription_status === "pro" ? "pro" : "free";
   const limits = PLANS[plan];
 
-  // Get start of current billing period (1st of current month)
-  const now = new Date();
-  const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // Use actual Stripe billing period for Pro users,
+  // fall back to calendar month for free users or pre-migration Pro users
+  let periodStart: Date;
+  if (plan === "pro" && profile?.subscription_period_start) {
+    periodStart = new Date(profile.subscription_period_start);
+  } else {
+    const now = new Date();
+    periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  }
 
   const [analyzesUsed, chatUsed] = await Promise.all([
     getUsageCount(userId, "analyze", periodStart),

@@ -20,6 +20,7 @@ export interface Database {
           stripe_customer_id: string | null;
           subscription_status: string;
           subscription_period_end: string | null;
+          subscription_period_start: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -33,6 +34,7 @@ export interface Database {
           stripe_customer_id?: string | null;
           subscription_status?: string;
           subscription_period_end?: string | null;
+          subscription_period_start?: string | null;
           created_at?: string;
           updated_at?: string;
         };
@@ -46,6 +48,7 @@ export interface Database {
           stripe_customer_id?: string | null;
           subscription_status?: string;
           subscription_period_end?: string | null;
+          subscription_period_start?: string | null;
           updated_at?: string;
         };
         Relationships: [];

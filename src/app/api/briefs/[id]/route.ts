@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getBrief, deleteBrief } from "@/lib/store";
 import { requireAuth } from "@/lib/auth";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -28,7 +31,9 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    await requireAuth();
+    const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

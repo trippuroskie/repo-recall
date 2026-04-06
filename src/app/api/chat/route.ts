@@ -4,11 +4,14 @@ import { buildBriefContext, CHAT_SYSTEM_PROMPT } from "@/lib/prompts";
 import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
 import { fetchFileContent } from "@/lib/github";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 import type { ChatMessage, ProjectBrief } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "chat");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
 
     // Check plan limits
     const limits = await checkPlanLimits(user.id);

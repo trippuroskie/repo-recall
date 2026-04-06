@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { requireAuth } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function GET() {
   try {
     const user = await requireAuth();
+    const rl = checkRateLimit(user.id, "standard");
+    if (rl.limited) return rateLimitResponse(rl.retryAfter!);
     const supabase = await createClient();
 
     // Get briefs that have chat messages, with latest message and count
