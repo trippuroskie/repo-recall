@@ -158,6 +158,7 @@ export class ToolExecutor {
       const { data, headers } = await this.octokit.rest.search.code({
         q,
         per_page: 10,
+        mediaType: { previews: ["text-match"] },
       });
       this.updateRateLimit(headers);
 

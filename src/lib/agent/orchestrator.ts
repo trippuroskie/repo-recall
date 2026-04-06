@@ -194,12 +194,14 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
   // Phase 2: Synthesis
   emit({ type: "progress", phase: "Synthesizing findings", current: 2, total: 3 });
 
-  // Gather the exploration summary — either the final assistant message or a compiled summary
-  const lastAssistantMsg = messages
-    .filter((m) => m.role === "assistant" && typeof m.content === "string" && m.content.length > 50)
-    .pop();
+  // Gather the exploration summary — prefer the final text message, but collect all assistant text
+  const assistantTexts = messages
+    .filter((m) => m.role === "assistant" && typeof m.content === "string" && m.content.length > 0)
+    .map((m) => m.content as string);
 
-  const explorationSummary = lastAssistantMsg?.content || buildFallbackSummary(toolResults);
+  const explorationSummary = assistantTexts.length > 0
+    ? assistantTexts.join("\n\n")
+    : buildFallbackSummary(toolResults);
 
   const brief = await synthesize({
     repoInfo,
@@ -214,7 +216,6 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
   });
 
   emit({ type: "progress", phase: "Complete", current: 3, total: 3 });
-  emit({ type: "complete", brief });
 
   return brief;
 }
