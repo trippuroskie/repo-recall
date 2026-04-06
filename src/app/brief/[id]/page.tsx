@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef, useCallback, Suspense } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { BriefSidebar } from "@/components/BriefSidebar";
 import { OverviewSection } from "@/components/sections/OverviewSection";
@@ -21,7 +21,15 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
-export default function BriefPage() {
+export default function BriefPageWrapper() {
+  return (
+    <Suspense>
+      <BriefPage />
+    </Suspense>
+  );
+}
+
+function BriefPage() {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();

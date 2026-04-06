@@ -491,10 +491,12 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
 
   const handleLoadSession = useCallback(async (loadSessionId: string, briefId: string) => {
     if (streaming) return;
-    // Navigate to the brief if it's different
-    if (briefId !== brief.id && onNavigateToBrief) {
-      onNavigateToBrief(briefId);
+    // Navigate to the brief if it's different — pass session via URL
+    if (briefId !== brief.id) {
+      window.location.href = `/brief/${briefId}?chat=${loadSessionId}`;
+      return;
     }
+    // Same brief — load session in place
     setSessionId(loadSessionId);
     setMessages([]);
     setMessagesLoaded(false);
@@ -504,7 +506,7 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
     setActiveLineEnd(null);
     setViewerFiles([]);
     setHistoryOpen(false);
-  }, [streaming, brief.id, onNavigateToBrief]);
+  }, [streaming, brief.id]);
 
   // ─── Markdown renderer with [[file:...]] support ───
 
