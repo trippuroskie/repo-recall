@@ -120,6 +120,15 @@ function IconPlus() {
   );
 }
 
+function IconSettings() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <circle cx="8" cy="8" r="2.5" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M8 1.5v1.3M8 13.2v1.3M1.5 8h1.3M13.2 8h1.3M3.4 3.4l.9.9M11.7 11.7l.9.9M3.4 12.6l.9-.9M11.7 4.3l.9-.9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 function IconCreditCard() {
   return (
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -939,6 +948,26 @@ function SidebarUserDropdown({
           {email}
         </div>
       </div>
+
+      {/* Settings */}
+      <a
+        href="/settings"
+        onClick={onClose}
+        className="sidebar-btn-hover"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          padding: "7px 14px",
+          fontSize: 13,
+          color: "rgb(100,99,97)",
+          textDecoration: "none",
+          cursor: "pointer",
+        }}
+      >
+        <IconSettings />
+        Settings
+      </a>
 
       {/* Billing */}
       <a
