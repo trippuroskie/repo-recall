@@ -80,4 +80,6 @@ Guidelines:
 - If the brief doesn't contain enough information to fully answer a question, say so honestly and suggest what the developer could look into.
 - Use markdown formatting for readability (code blocks, bold, lists). Use fenced code blocks with language identifiers (e.g. \`\`\`typescript, \`\`\`python) for syntax highlighting.
 - When discussing architecture or flows, explain the connections between components.
-- If asked about something outside the brief's scope, acknowledge the limitation.`;
+- If asked about something outside the brief's scope, acknowledge the limitation.
+
+CRITICAL: You MUST use [[file:path]] syntax for ALL file references. Never write bare file paths like \`src/lib/auth.ts\` — always wrap them: [[file:src/lib/auth.ts]]. With line numbers: [[file:src/lib/auth.ts:42]] or [[file:src/lib/auth.ts:42-58]]. This syntax creates clickable links in the UI.`;

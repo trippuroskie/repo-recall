@@ -38,8 +38,8 @@ interface OrchestratorConfig {
 }
 
 const MAX_ITERATIONS = 20;
-const EXPLORATION_MODEL = process.env.AGENT_EXPLORATION_MODEL || "anthropic/claude-haiku-3.5-20241022";
-const SYNTHESIS_MODEL = process.env.AGENT_SYNTHESIS_MODEL || "anthropic/claude-sonnet-4";
+const EXPLORATION_MODEL = process.env.AGENT_EXPLORATION_MODEL || "google/gemini-3-flash-preview";
+const SYNTHESIS_MODEL = process.env.AGENT_SYNTHESIS_MODEL || "google/gemini-3.1-pro-preview";
 
 export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<ProjectBrief> {
   const { repoInfo, files, prs, commits, packageJson, readme, token, onProgress } = config;

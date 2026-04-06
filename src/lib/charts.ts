@@ -9,16 +9,130 @@ function sanitize(text: string): string {
 }
 
 export function buildOverviewFlowChart(brief: ProjectBrief): string {
-  const flows = brief.overview.majorFlows.slice(0, 6);
-  if (flows.length === 0) return "";
+  const modules = brief.architecture.keyModules.slice(0, 10);
+  const apis = brief.architecture.apis.slice(0, 6);
+  const integrations = brief.architecture.integrations.slice(0, 6);
+  const features = brief.features.slice(0, 6);
 
-  let chart = "graph LR\n";
-  chart += `  USER([fa:fa-user User]) --> APP[${sanitize(brief.repoInfo.name)}]\n`;
+  // Need enough data to build a meaningful diagram
+  if (modules.length === 0 && features.length === 0) return "";
 
-  flows.forEach((flow, i) => {
-    const id = `F${i}`;
-    chart += `  APP --> ${id}["${sanitize(flow)}"]\n`;
-  });
+  let chart = "graph TD\n";
+  let nid = 0;
+
+  // User entry point
+  chart += `  USER([fa:fa-user User])\n`;
+
+  // Classify modules into layers
+  const frontend: { name: string; id: string }[] = [];
+  const backend: { name: string; id: string }[] = [];
+  const data: { name: string; id: string }[] = [];
+
+  for (const mod of modules) {
+    const n = mod.name.toLowerCase();
+    const p = mod.purpose.toLowerCase();
+    const path = mod.path.toLowerCase();
+    const id = `M${nid++}`;
+
+    if (
+      n.includes("page") || n.includes("component") || n.includes("hook") ||
+      n.includes("layout") || n.includes("view") ||
+      p.includes("ui") || p.includes("frontend") || p.includes("render") ||
+      path.includes("components") || path.includes("app/") && path.includes("page")
+    ) {
+      frontend.push({ name: mod.name, id });
+    } else if (
+      n.includes("database") || n.includes("schema") || n.includes("migration") ||
+      n.includes("store") || n.includes("model") ||
+      p.includes("database") || p.includes("storage") || p.includes("persist")
+    ) {
+      data.push({ name: mod.name, id });
+    } else {
+      backend.push({ name: mod.name, id });
+    }
+  }
+
+  // If no clear frontend modules, use features as the UI layer
+  if (frontend.length === 0 && features.length > 0) {
+    for (const feat of features.slice(0, 4)) {
+      frontend.push({ name: feat.name, id: `M${nid++}` });
+    }
+  }
+
+  // Frontend subgraph
+  if (frontend.length > 0) {
+    chart += `  subgraph UI["Frontend"]\n`;
+    chart += `    direction LR\n`;
+    for (const mod of frontend) {
+      chart += `    ${mod.id}["${sanitize(mod.name)}"]\n`;
+    }
+    chart += `  end\n`;
+    chart += `  USER --> UI\n`;
+  }
+
+  // API layer
+  if (apis.length > 0) {
+    chart += `  subgraph API["API Layer"]\n`;
+    chart += `    direction LR\n`;
+    apis.forEach((api, i) => {
+      const short = api.split("/").slice(-2).join("/");
+      chart += `    A${i}["${sanitize(short)}"]\n`;
+    });
+    chart += `  end\n`;
+    if (frontend.length > 0) {
+      chart += `  UI --> API\n`;
+    } else {
+      chart += `  USER --> API\n`;
+    }
+  }
+
+  // Backend / core logic subgraph
+  if (backend.length > 0) {
+    chart += `  subgraph CORE["Core Logic"]\n`;
+    chart += `    direction LR\n`;
+    for (const mod of backend) {
+      chart += `    ${mod.id}["${sanitize(mod.name)}"]\n`;
+    }
+    chart += `  end\n`;
+    if (apis.length > 0) {
+      chart += `  API --> CORE\n`;
+    } else if (frontend.length > 0) {
+      chart += `  UI --> CORE\n`;
+    }
+  }
+
+  // Data layer
+  if (data.length > 0) {
+    chart += `  subgraph DATA["Data Layer"]\n`;
+    chart += `    direction LR\n`;
+    for (const mod of data) {
+      chart += `    ${mod.id}["${sanitize(mod.name)}"]\n`;
+    }
+    chart += `  end\n`;
+    if (backend.length > 0) {
+      chart += `  CORE --> DATA\n`;
+    } else if (apis.length > 0) {
+      chart += `  API --> DATA\n`;
+    }
+  }
+
+  // External services
+  if (integrations.length > 0) {
+    chart += `  subgraph EXT["External Services"]\n`;
+    chart += `    direction LR\n`;
+    integrations.forEach((int, i) => {
+      chart += `    E${i}["${sanitize(int)}"]\n`;
+    });
+    chart += `  end\n`;
+    // Connect to whichever layer makes sense
+    if (backend.length > 0) {
+      chart += `  CORE --> EXT\n`;
+    } else if (apis.length > 0) {
+      chart += `  API --> EXT\n`;
+    } else {
+      chart += `  UI --> EXT\n`;
+    }
+  }
 
   return chart;
 }

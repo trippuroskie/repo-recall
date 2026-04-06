@@ -3,7 +3,7 @@
 import type { ProjectBrief } from "@/lib/types";
 import { MermaidChart } from "@/components/MermaidChart";
 import { buildOverviewFlowChart } from "@/lib/charts";
-import { Globe, Users, Zap, ArrowRight, Star, GitFork, FileCode, GitPullRequest, GitCommit, Calendar, Tag } from "lucide-react";
+import { Globe, Users, Zap, Star, GitFork, FileCode, GitPullRequest, GitCommit, Calendar, Tag } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
 export function OverviewSection({ brief }: { brief: ProjectBrief }) {
@@ -94,28 +94,12 @@ export function OverviewSection({ brief }: { brief: ProjectBrief }) {
         />
       </div>
 
-      {overview.majorFlows.length > 0 && (
+      {flowChart && (
         <div className="mb-8">
           <h3 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
-            Major Flows
+            Overview
           </h3>
-
-          {flowChart && <MermaidChart chart={flowChart} />}
-
-          <div className="flex flex-col gap-2">
-            {overview.majorFlows.map((flow, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-2.5 text-sm text-foreground"
-              >
-                <ArrowRight
-                  size={14}
-                  className="text-foreground-secondary shrink-0"
-                />
-                {flow}
-              </div>
-            ))}
-          </div>
+          <MermaidChart chart={flowChart} />
         </div>
       )}
     </div>

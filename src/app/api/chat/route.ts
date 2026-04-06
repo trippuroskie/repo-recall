@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
             "X-Title": "RepoRecall",
           },
           body: JSON.stringify({
-            model: process.env.CHAT_MODEL || "anthropic/claude-sonnet-4",
+            model: process.env.CHAT_MODEL || "google/gemini-3-flash-preview",
             stream: true,
             messages: [
               { role: "system", content: systemMessage },

@@ -211,14 +211,18 @@ function buildCodemapSections(brief: ProjectBrief): MapSection[] {
 
   // 3. API Layer
   if (brief.architecture.apis.length > 0) {
-    const apiItems = brief.architecture.apis.slice(0, 8).map((api, i) => ({
-      id: `api-${i}`,
-      number: `${sectionNum}${String.fromCharCode(97 + i)}`,
-      title: api,
-      subtitle: `API route handler`,
-      codeRef: { path: api, label: api },
-      details: [],
-    }));
+    const apiItems = brief.architecture.apis.slice(0, 8).map((api, i) => {
+      // APIs may be route paths like "/api/chat" — resolve to actual file paths
+      const filePath = resolveApiPath(api);
+      return {
+        id: `api-${i}`,
+        number: `${sectionNum}${String.fromCharCode(97 + i)}`,
+        title: api,
+        subtitle: `API route handler`,
+        codeRef: filePath ? { path: filePath, label: filePath } : undefined,
+        details: [],
+      };
+    });
 
     sections.push({
       id: String(sectionNum),
@@ -333,4 +337,13 @@ function buildCodemapSections(brief: ProjectBrief): MapSection[] {
   });
 
   return sections;
+}
+
+// Resolve API route paths (e.g. "/api/chat") to actual file paths
+function resolveApiPath(api: string): string | null {
+  // Already looks like a real file path
+  if (api.includes(".")) return api;
+  // Route path like "/api/chat" → "src/app/api/chat/route.ts"
+  const clean = api.replace(/^\//, "");
+  return `src/app/${clean}/route.ts`;
 }
