@@ -15,6 +15,8 @@ import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
+export const maxDuration = 300; // 5 minutes — agentic analysis needs time for LLM iterations
+
 export async function POST(request: NextRequest) {
   try {
     const user = await requireAuth();
@@ -86,6 +88,15 @@ export async function POST(request: NextRequest) {
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
+        // Keepalive heartbeat to prevent Vercel/CDN/browser from closing idle connections
+        const keepalive = setInterval(() => {
+          try {
+            controller.enqueue(encoder.encode(`: keepalive\n\n`));
+          } catch {
+            clearInterval(keepalive);
+          }
+        }, 15_000);
+
         const send = (event: ProgressEvent) => {
           try {
             controller.enqueue(
@@ -137,9 +148,11 @@ export async function POST(request: NextRequest) {
           await saveBrief(brief, userId);
 
           send({ type: "complete", brief });
+          clearInterval(keepalive);
           controller.enqueue(encoder.encode("data: [DONE]\n\n"));
           controller.close();
         } catch (innerError) {
+          clearInterval(keepalive);
           // Roll back usage reservation on failure
           if (usageId) await rollbackUsage(usageId);
           const message =

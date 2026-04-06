@@ -88,21 +88,39 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://reporecall.dev",
-        "X-Title": "RepoRecall Agent",
-      },
-      body: JSON.stringify({
-        model: EXPLORATION_MODEL,
-        messages,
-        tools: AGENT_TOOLS,
-        tool_choice: "auto",
-      }),
-    });
+    const explorationAbort = new AbortController();
+    const explorationTimeout = setTimeout(() => explorationAbort.abort(), 45_000);
+
+    let response: Response;
+    try {
+      response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://reporecall.dev",
+          "X-Title": "RepoRecall Agent",
+        },
+        body: JSON.stringify({
+          model: EXPLORATION_MODEL,
+          messages,
+          tools: AGENT_TOOLS,
+          tool_choice: "auto",
+        }),
+        signal: explorationAbort.signal,
+      });
+    } catch (fetchErr) {
+      clearTimeout(explorationTimeout);
+      // On timeout, stop exploring and proceed to synthesis with what we have
+      if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
+        emit({ type: "error", message: "Exploration call timed out. Proceeding to synthesis." });
+        explorationFinished = true;
+        continue;
+      }
+      throw fetchErr;
+    } finally {
+      clearTimeout(explorationTimeout);
+    }
 
     if (!response.ok) {
       const err = await response.text();
@@ -245,20 +263,33 @@ Produce the structured JSON analysis now.`,
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
-  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": "https://reporecall.dev",
-      "X-Title": "RepoRecall Synthesis",
-    },
-    body: JSON.stringify({
-      model: SYNTHESIS_MODEL,
-      messages: synthMessages,
-      temperature: 0.3,
-    }),
-  });
+  const synthesisAbort = new AbortController();
+  const synthesisTimeout = setTimeout(() => synthesisAbort.abort(), 60_000);
+
+  let response: Response;
+  try {
+    response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://reporecall.dev",
+        "X-Title": "RepoRecall Synthesis",
+      },
+      body: JSON.stringify({
+        model: SYNTHESIS_MODEL,
+        messages: synthMessages,
+        temperature: 0.3,
+      }),
+      signal: synthesisAbort.signal,
+    });
+  } catch (fetchErr) {
+    clearTimeout(synthesisTimeout);
+    emit({ type: "error", message: "Synthesis timed out. Falling back to static analysis." });
+    return generateBrief(repoInfo, files, prs, commits, packageJson, readme);
+  } finally {
+    clearTimeout(synthesisTimeout);
+  }
 
   if (!response.ok) {
     // Fallback to static analysis on synthesis failure
