@@ -36,13 +36,19 @@ function parseFileRef(raw: string): FileRef {
   return { path: raw.trim() };
 }
 
+// Check if a path looks like a file (has an extension) vs a directory
+function looksLikeFile(path: string): boolean {
+  const lastSegment = path.split("/").pop() || "";
+  return lastSegment.includes(".");
+}
+
 // Extract [[file:path]] references from text
 function extractFileRefs(text: string): string[] {
   const matches = text.matchAll(/\[\[file:([^\]]+)\]\]/g);
   const files: string[] = [];
   for (const match of matches) {
     const { path } = parseFileRef(match[1]);
-    if (!files.includes(path)) files.push(path);
+    if (!files.includes(path) && looksLikeFile(path)) files.push(path);
   }
   return files;
 }
@@ -116,6 +122,7 @@ export function ChatPanel({ brief }: ChatPanelProps) {
   }, [messages, expanded]);
 
   const handleFileRef = useCallback((ref: FileRef) => {
+    if (!looksLikeFile(ref.path)) return;
     setViewerFiles((prev) => {
       if (prev.includes(ref.path)) return prev;
       return [...prev, ref.path];
@@ -407,6 +414,23 @@ export function ChatPanel({ brief }: ChatPanelProps) {
       if (fileMatch) {
         const ref = parseFileRef(fileMatch[1]);
         const fileName = ref.path.split("/").pop() || ref.path;
+        // Directory paths render as plain code, not clickable refs
+        if (!looksLikeFile(ref.path)) {
+          return (
+            <code
+              key={i}
+              style={{
+                background: "#f7f6f3",
+                padding: "1px 5px",
+                borderRadius: 3,
+                fontSize: "0.88em",
+                fontFamily: "var(--font-mono), monospace",
+              }}
+            >
+              {ref.path}
+            </code>
+          );
+        }
         const lineLabel = ref.startLine
           ? ref.endLine
             ? `:${ref.startLine}-${ref.endLine}`

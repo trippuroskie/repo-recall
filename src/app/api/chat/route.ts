@@ -1,9 +1,10 @@
 import { NextRequest } from "next/server";
-import { getBrief, addChatMessage, trackUsage, rollbackUsage } from "@/lib/store";
+import { getBrief, addChatMessage, trackUsage, rollbackUsage, getGitHubToken } from "@/lib/store";
 import { buildBriefContext, CHAT_SYSTEM_PROMPT } from "@/lib/prompts";
 import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
-import type { ChatMessage } from "@/lib/types";
+import { fetchFileContent } from "@/lib/github";
+import type { ChatMessage, ProjectBrief } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   try {
@@ -50,7 +51,34 @@ export async function POST(request: NextRequest) {
     }
 
     const briefContext = buildBriefContext(brief);
-    const systemMessage = `${CHAT_SYSTEM_PROMPT}\n\n---\n\nHere is the analyzed brief for the repository:\n\n${briefContext}`;
+
+    // Fetch relevant file contents so the model can reference specific lines
+    const userQuery = messages[messages.length - 1]?.content || "";
+    const relevantFiles = selectRelevantFiles(brief, userQuery);
+    let fileContext = "";
+    if (relevantFiles.length > 0) {
+      const token = (await getGitHubToken(user.id)) || undefined;
+      const fetched = await fetchRelevantFiles(
+        brief.repoInfo.owner,
+        brief.repoInfo.name,
+        relevantFiles,
+        token
+      );
+      if (fetched.length > 0) {
+        fileContext = "\n\n---\n\n## Source Files (with line numbers)\nUse these to reference specific code lines with [[file:path:line]] syntax.\n\n";
+        fileContext += fetched
+          .map(({ path, content }) => {
+            const numbered = content
+              .split("\n")
+              .map((line, i) => `${i + 1}: ${line}`)
+              .join("\n");
+            return `### ${path}\n\`\`\`\n${numbered}\n\`\`\``;
+          })
+          .join("\n\n");
+      }
+    }
+
+    const systemMessage = `${CHAT_SYSTEM_PROMPT}\n\n---\n\nHere is the analyzed brief for the repository:\n\n${briefContext}${fileContext}`;
 
     // Save the user message
     const userMsg = messages[messages.length - 1];
@@ -82,7 +110,7 @@ export async function POST(request: NextRequest) {
             "X-Title": "RepoRecall",
           },
           body: JSON.stringify({
-            model: "anthropic/claude-sonnet-4",
+            model: process.env.CHAT_MODEL || "anthropic/claude-sonnet-4",
             stream: true,
             messages: [
               { role: "system", content: systemMessage },
@@ -203,4 +231,90 @@ export async function POST(request: NextRequest) {
       headers: { "Content-Type": "application/json" },
     });
   }
+}
+
+// Check if a path looks like a file (has an extension)
+function looksLikeFile(path: string): boolean {
+  const lastSegment = path.split("/").pop() || "";
+  return lastSegment.includes(".");
+}
+
+// Collect all known file paths from the brief, scored by relevance to the query
+function selectRelevantFiles(brief: ProjectBrief, query: string): string[] {
+  const queryLower = query.toLowerCase();
+  const queryWords = queryLower.split(/\s+/).filter((w) => w.length > 2);
+
+  const scored: { path: string; score: number }[] = [];
+  const seen = new Set<string>();
+
+  const addFile = (path: string, baseScore: number, context: string) => {
+    if (!looksLikeFile(path) || seen.has(path)) return;
+    seen.add(path);
+    let score = baseScore;
+    // Boost if the file path or context matches query words
+    const pathLower = path.toLowerCase();
+    const contextLower = context.toLowerCase();
+    for (const word of queryWords) {
+      if (pathLower.includes(word)) score += 3;
+      if (contextLower.includes(word)) score += 2;
+    }
+    scored.push({ path, score });
+  };
+
+  // Entrypoints (high priority)
+  for (const ep of brief.entrypoints) {
+    const priority = ep.priority === "high" ? 2 : ep.priority === "medium" ? 1 : 0;
+    addFile(ep.path, priority, ep.reason);
+  }
+
+  // Feature files
+  for (const feature of brief.features) {
+    const context = `${feature.name} ${feature.description} ${feature.businessPurpose}`;
+    for (const file of feature.files) {
+      addFile(file, 1, context);
+    }
+  }
+
+  // Key modules
+  for (const mod of brief.architecture.keyModules) {
+    addFile(mod.path, 1, `${mod.name} ${mod.purpose}`);
+  }
+
+  // Sort by score descending, take top 5
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, 5).map((s) => s.path);
+}
+
+// Fetch file contents in parallel, with a total size cap
+async function fetchRelevantFiles(
+  owner: string,
+  repo: string,
+  paths: string[],
+  token?: string
+): Promise<{ path: string; content: string }[]> {
+  const MAX_TOTAL_CHARS = 30_000; // Keep context reasonable
+  const MAX_FILE_CHARS = 10_000;
+
+  const results = await Promise.allSettled(
+    paths.map(async (path) => {
+      const content = await fetchFileContent(owner, repo, path, token);
+      return content ? { path, content } : null;
+    })
+  );
+
+  const files: { path: string; content: string }[] = [];
+  let totalChars = 0;
+
+  for (const result of results) {
+    if (result.status !== "fulfilled" || !result.value) continue;
+    let { path, content } = result.value;
+    if (content.length > MAX_FILE_CHARS) {
+      content = content.slice(0, MAX_FILE_CHARS) + "\n... (truncated)";
+    }
+    if (totalChars + content.length > MAX_TOTAL_CHARS) break;
+    totalChars += content.length;
+    files.push({ path, content });
+  }
+
+  return files;
 }
