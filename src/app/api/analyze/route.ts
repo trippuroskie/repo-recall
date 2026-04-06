@@ -9,6 +9,7 @@ import {
 } from "@/lib/github";
 import { generateBrief } from "@/lib/analysis";
 import { saveBrief, trackUsage, rollbackUsage, getGitHubToken } from "@/lib/store";
+import { createServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
 
@@ -47,8 +48,17 @@ export async function POST(request: NextRequest) {
 
     const { owner, repo } = parsed;
     // Use provided token, or user's stored GitHub token, or server fallback
-    const authToken =
-      token || (await getGitHubToken(user.id)) || undefined;
+    const storedToken = await getGitHubToken(user.id);
+    const authToken = token || storedToken || undefined;
+
+    // If user provided a new token, save it to their profile for future use
+    if (token && token !== storedToken) {
+      const supabase = await createServiceClient();
+      await supabase
+        .from("profiles")
+        .update({ github_access_token: token })
+        .eq("id", user.id);
+    }
 
     // Fetch repo info first to check private-repo entitlement
     const repoInfo = await fetchRepoInfo(owner, repo, authToken);

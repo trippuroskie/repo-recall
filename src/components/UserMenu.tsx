@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { LogOut, CreditCard, User as UserIcon } from "lucide-react";
+import { LogOut, CreditCard, User as UserIcon, Settings } from "lucide-react";
 import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 
@@ -85,6 +85,14 @@ export function UserMenu() {
             <p className="text-sm font-medium text-white truncate">{name}</p>
             <p className="text-xs text-zinc-400 truncate">{user.email}</p>
           </div>
+          <Link
+            href="/settings"
+            onClick={() => setOpen(false)}
+            className="flex items-center gap-2 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Settings
+          </Link>
           <Link
             href="/billing"
             onClick={() => setOpen(false)}
