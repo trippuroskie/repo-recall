@@ -40,6 +40,10 @@ export default function BriefPage() {
           fetch(`/api/briefs/${params.id}`),
           fetch("/api/briefs"),
         ]);
+        if (briefRes.status === 401) {
+          window.location.href = `/login?redirect=/brief/${params.id}`;
+          return;
+        }
         if (!briefRes.ok) throw new Error("Brief not found");
         const briefData = await briefRes.json();
         setBrief(briefData.brief);

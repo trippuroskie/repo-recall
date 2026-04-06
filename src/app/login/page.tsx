@@ -13,6 +13,7 @@ function LoginForm() {
 
   const handleGitHubLogin = async () => {
     const supabase = createClient();
+    if (!supabase) return;
     await supabase.auth.signInWithOAuth({
       provider: "github",
       options: {

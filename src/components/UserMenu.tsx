@@ -13,6 +13,8 @@ export function UserMenu() {
 
   useEffect(() => {
     const supabase = createClient();
+    if (!supabase) return; // Supabase not configured (local dev)
+
     supabase.auth.getUser().then(({ data: { user } }) => setUser(user));
 
     const {
@@ -36,6 +38,7 @@ export function UserMenu() {
 
   const handleSignOut = async () => {
     const supabase = createClient();
+    if (!supabase) return;
     await supabase.auth.signOut();
     window.location.href = "/";
   };

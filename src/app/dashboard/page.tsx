@@ -31,10 +31,14 @@ export default function DashboardPage() {
   async function fetchBriefs() {
     try {
       const res = await fetch("/api/briefs");
+      if (res.status === 401) {
+        window.location.href = "/login?redirect=/dashboard";
+        return;
+      }
       const data = await res.json();
-      setBriefs(data.briefs);
+      setBriefs(data.briefs ?? []);
     } catch {
-      // silently fail
+      setBriefs([]);
     } finally {
       setLoading(false);
     }
