@@ -86,6 +86,8 @@ export function AnalysisProgress({
         const decoder = new TextDecoder();
         let buffer = "";
 
+        let receivedComplete = false;
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
@@ -101,11 +103,17 @@ export function AnalysisProgress({
 
             try {
               const event: ProgressEvent = JSON.parse(data);
+              if (event.type === "complete") receivedComplete = true;
               handleEvent(event);
             } catch {
               // Skip malformed events
             }
           }
+        }
+
+        // If the stream ended without a complete event, something went wrong
+        if (!receivedComplete) {
+          onError("Analysis ended unexpectedly. Please try again.");
         }
       } catch (err) {
         if (controller.signal.aborted) return;
@@ -170,6 +178,8 @@ export function AnalysisProgress({
               type: "error",
             },
           ]);
+          // Surface fatal errors to dismiss the overlay
+          // (non-fatal errors like "falling back to static" are followed by a complete event)
           break;
 
         case "complete":
