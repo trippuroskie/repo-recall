@@ -11,6 +11,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import Link from "next/link";
+import { UserMenu } from "@/components/UserMenu";
 
 const features = [
   {
@@ -52,12 +53,15 @@ export default function HomePage() {
       <header className="border-b border-border">
         <div className="max-w-5xl mx-auto px-6 py-3 flex items-center justify-between">
           <Logo />
-          <Link
-            href="/dashboard"
-            className="text-sm text-foreground-secondary hover:text-foreground transition-colors"
-          >
-            Dashboard
-          </Link>
+          <div className="flex items-center gap-4">
+            <Link
+              href="/dashboard"
+              className="text-sm text-foreground-secondary hover:text-foreground transition-colors"
+            >
+              Dashboard
+            </Link>
+            <UserMenu />
+          </div>
         </div>
       </header>
 
