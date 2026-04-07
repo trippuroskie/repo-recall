@@ -119,6 +119,7 @@ export async function POST(request: NextRequest) {
           }
 
           enqueueTrace(streamController, encoder, "build_context", "done", "Context ready");
+          enqueueTrace(streamController, encoder, "thinking", "started", "Generating response...");
 
           const systemMessage = `${CHAT_SYSTEM_PROMPT}\n\n---\n\nHere is the analyzed brief for the repository:\n\n${briefContext}${fileContext}`;
 
@@ -319,7 +320,9 @@ function enqueueTrace(
   );
 }
 
-// Fetch file contents in parallel, with a total size cap, emitting per-file trace events
+// Fetch file contents with progressive trace events.
+// Files are fetched in small concurrent batches so the client sees
+// traces arrive progressively rather than all at once.
 async function fetchRelevantFilesWithTrace(
   owner: string,
   repo: string,
@@ -331,27 +334,33 @@ async function fetchRelevantFilesWithTrace(
 ): Promise<{ path: string; content: string }[]> {
   const MAX_TOTAL_CHARS = maxTotalChars;
   const MAX_FILE_CHARS = 10_000;
-
-  const results = await Promise.allSettled(
-    paths.map(async (path) => {
-      const content = await fetchFileContent(owner, repo, path, token);
-      return content ? { path, content } : null;
-    })
-  );
+  const BATCH_SIZE = 3;
 
   const files: { path: string; content: string }[] = [];
   let totalChars = 0;
 
-  for (const result of results) {
-    if (result.status !== "fulfilled" || !result.value) continue;
-    let { path, content } = result.value;
-    if (content.length > MAX_FILE_CHARS) {
-      content = content.slice(0, MAX_FILE_CHARS) + "\n... (truncated)";
+  for (let i = 0; i < paths.length; i += BATCH_SIZE) {
+    if (totalChars >= MAX_TOTAL_CHARS) break;
+
+    const batch = paths.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (path) => {
+        const content = await fetchFileContent(owner, repo, path, token);
+        return content ? { path, content } : null;
+      })
+    );
+
+    for (const result of results) {
+      if (result.status !== "fulfilled" || !result.value) continue;
+      let { path, content } = result.value;
+      if (content.length > MAX_FILE_CHARS) {
+        content = content.slice(0, MAX_FILE_CHARS) + "\n... (truncated)";
+      }
+      if (totalChars + content.length > MAX_TOTAL_CHARS) break;
+      totalChars += content.length;
+      files.push({ path, content });
+      enqueueTrace(streamController, encoder, "fetch_file", "done", path);
     }
-    if (totalChars + content.length > MAX_TOTAL_CHARS) break;
-    totalChars += content.length;
-    files.push({ path, content });
-    enqueueTrace(streamController, encoder, "fetch_file", "done", path);
   }
 
   return files;

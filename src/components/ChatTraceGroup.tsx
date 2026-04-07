@@ -45,8 +45,10 @@ function buildSummary(traces: TraceEvent[]): string {
   return parts.join(", ");
 }
 
-function isStepInProgress(trace: TraceEvent, allTraces: TraceEvent[]): boolean {
+function isStepInProgress(trace: TraceEvent, allTraces: TraceEvent[], isStreaming: boolean): boolean {
   if (trace.status === "done") return false;
+  // "thinking" stays in-progress as long as we're still streaming
+  if (trace.action === "thinking") return isStreaming;
   // Check if there's a corresponding "done" event for group actions
   if (trace.action === "select_files" || trace.action === "fetch_files") {
     return !allTraces.some(
@@ -79,11 +81,12 @@ export function ChatTraceGroup({
 
   const summary = buildSummary(traces);
 
-  // Filter to meaningful display entries (skip group-level "started" for fetch_files)
+  // Filter to meaningful display entries
   const displayEntries = traces.filter((t) => {
     if (t.action === "fetch_files" && t.status === "started") return true;
     if (t.action === "fetch_files" && t.status === "done") return false; // redundant with summary
     if (t.action === "build_context") return false; // shown in summary
+    if (t.action === "thinking") return true;
     return true;
   });
 
@@ -126,7 +129,7 @@ export function ChatTraceGroup({
           {displayEntries.map((trace, i) => (
             <div key={i} className="chat-trace-entry animate-fade-in">
               <span style={{ flexShrink: 0, width: 14, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {isStepInProgress(trace, traces) ? (
+                {isStepInProgress(trace, traces, isStreaming) ? (
                   <span
                     className="inline-block w-3 h-3 border-2 border-accent border-t-transparent rounded-full animate-spin"
                   />
