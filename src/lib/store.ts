@@ -1,6 +1,13 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/types";
 import type { ProjectBrief, ChatMessage } from "./types";
+
+async function getClient() {
+  if (process.env.DEV_BYPASS_AUTH === "true" && process.env.NODE_ENV === "development") {
+    return createServiceClient();
+  }
+  return createClient();
+}
 
 type BriefInsert = Database["public"]["Tables"]["briefs"]["Insert"];
 type SessionInsert = Database["public"]["Tables"]["chat_sessions"]["Insert"];
@@ -11,7 +18,7 @@ export async function saveBrief(
   brief: ProjectBrief,
   userId: string
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const row: BriefInsert = {
     id: brief.id,
     user_id: userId,
@@ -32,7 +39,7 @@ export async function saveBrief(
 }
 
 export async function getBrief(id: string): Promise<ProjectBrief | null> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const { data, error } = await supabase
     .from("briefs")
     .select("*")
@@ -44,7 +51,7 @@ export async function getBrief(id: string): Promise<ProjectBrief | null> {
 }
 
 export async function getAllBriefs(): Promise<ProjectBrief[]> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const { data, error } = await supabase
     .from("briefs")
     .select("*")
@@ -55,7 +62,7 @@ export async function getAllBriefs(): Promise<ProjectBrief[]> {
 }
 
 export async function deleteBrief(id: string): Promise<boolean> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const { data, error } = await supabase
     .from("briefs")
     .delete()
@@ -72,7 +79,7 @@ export async function createChatSession(
   userId: string,
   title?: string
 ): Promise<string> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const id = crypto.randomUUID();
   const row: SessionInsert = {
     id,
@@ -88,7 +95,7 @@ export async function createChatSession(
 export async function getChatSessionsForBrief(
   briefId: string
 ): Promise<{ id: string; title: string; createdAt: string; updatedAt: string }[]> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const { data, error } = await supabase
     .from("chat_sessions")
     .select("*")
@@ -107,7 +114,7 @@ export async function getChatSessionsForBrief(
 export async function getChatSessionsForUser(
   userId: string
 ): Promise<{ id: string; briefId: string; title: string; createdAt: string; updatedAt: string }[]> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const { data, error } = await supabase
     .from("chat_sessions")
     .select("*")
@@ -128,12 +135,12 @@ export async function updateChatSessionTitle(
   sessionId: string,
   title: string
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   await supabase.from("chat_sessions").update({ title }).eq("id", sessionId);
 }
 
 export async function deleteChatSession(sessionId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   await supabase.from("chat_sessions").delete().eq("id", sessionId);
 }
 
@@ -143,7 +150,7 @@ export async function getChatMessages(
   briefId: string,
   sessionId?: string
 ): Promise<ChatMessage[]> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   let query = supabase
     .from("chat_messages")
     .select("*")
@@ -171,7 +178,7 @@ export async function addChatMessage(
   userId: string,
   sessionId?: string
 ): Promise<void> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const row: ChatInsert = {
     id: message.id,
     brief_id: briefId,
@@ -192,7 +199,7 @@ export async function addChatMessage(
 }
 
 export async function clearChatMessages(briefId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   await supabase.from("chat_messages").delete().eq("brief_id", briefId);
 }
 
@@ -203,7 +210,7 @@ export async function trackUsage(
   repoFullName?: string,
   tokensUsed?: number
 ): Promise<string | null> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const row: UsageInsert = {
     user_id: userId,
     action,
@@ -215,7 +222,7 @@ export async function trackUsage(
 }
 
 export async function rollbackUsage(usageId: string): Promise<void> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   await supabase.from("usage").delete().eq("id", usageId);
 }
 
@@ -224,7 +231,7 @@ export async function getUsageCount(
   action: string,
   since: Date
 ): Promise<number> {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const { count, error } = await supabase
     .from("usage")
     .select("*", { count: "exact", head: true })
@@ -238,7 +245,7 @@ export async function getUsageCount(
 
 // Profile helpers
 export async function getProfile(userId: string) {
-  const supabase = await createClient();
+  const supabase = await getClient();
   const { data } = await supabase
     .from("profiles")
     .select("*")

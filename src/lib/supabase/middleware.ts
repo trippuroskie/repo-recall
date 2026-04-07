@@ -41,14 +41,16 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith("/api/auth/") &&
     !request.nextUrl.pathname.startsWith("/api/webhooks/");
 
-  if (!user && isProtectedRoute) {
+  const devBypass = process.env.DEV_BYPASS_AUTH === "true" && process.env.NODE_ENV === "development";
+
+  if (!user && !devBypass && isProtectedRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", request.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
 
-  if (!user && isProtectedApi) {
+  if (!user && !devBypass && isProtectedApi) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
