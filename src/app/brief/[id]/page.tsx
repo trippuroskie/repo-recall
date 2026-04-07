@@ -40,6 +40,7 @@ function BriefPage() {
   const [activeSection, setActiveSection] = useState("overview");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState<string | undefined>(undefined);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -94,6 +95,17 @@ function BriefPage() {
       setReanalyzing(false);
     }
   }, [brief, reanalyzing, router]);
+
+  const handleOpenChat = useCallback(
+    (sessionId: string, briefId: string) => {
+      if (briefId !== params.id) {
+        router.push(`/brief/${briefId}?chat=${sessionId}`);
+      } else {
+        setChatSessionId(sessionId);
+      }
+    },
+    [params.id, router]
+  );
 
   const handleExport = useCallback(() => {
     if (!brief) return;
@@ -180,6 +192,7 @@ function BriefPage() {
         collapsed={sidebarCollapsed}
         onToggleCollapse={() => setSidebarCollapsed((p) => !p)}
         onConnectNew={() => router.push("/")}
+        onOpenChat={handleOpenChat}
       />
 
       {/* Main content */}
@@ -286,7 +299,7 @@ function BriefPage() {
       </div>
 
       {/* Chat */}
-      <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} initialSessionId={searchParams.get("chat") ?? undefined} />
+      <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} initialSessionId={chatSessionId ?? searchParams.get("chat") ?? undefined} />
     </div>
   );
 }

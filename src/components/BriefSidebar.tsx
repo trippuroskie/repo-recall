@@ -1,9 +1,36 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { User } from "@supabase/supabase-js";
 import type { ProjectBrief } from "@/lib/types";
+
+interface SidebarConversation {
+  sessionId: string;
+  briefId: string;
+  title: string;
+  repoName: string;
+  lastMessage: string;
+  lastTimestamp: string;
+  messageCount: number;
+}
+
+function formatTimeAgo(timestamp: string): string {
+  const now = Date.now();
+  const then = new Date(timestamp).getTime();
+  const seconds = Math.floor((now - then) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d`;
+  const weeks = Math.floor(days / 7);
+  if (weeks < 5) return `${weeks}w`;
+  const months = Math.floor(days / 30);
+  return `${months}mo`;
+}
 
 // ─── Inline SVG Icons (Notion-style, thin stroke) ───
 function IconLogo() {
@@ -169,6 +196,15 @@ function IconDashboard() {
   );
 }
 
+function IconChat() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+      <path d="M2 3a1 1 0 011-1h10a1 1 0 011 1v7a1 1 0 01-1 1H5l-3 3V3z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M5 6h6M5 8.5h4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ─── Section definitions ───
 const briefSections = [
   { id: "overview", icon: IconFileText, label: "Overview" },
@@ -190,6 +226,7 @@ interface BriefSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onConnectNew?: () => void;
+  onOpenChat?: (sessionId: string, briefId: string) => void;
 }
 
 // ─── Sidebar Component ───
@@ -202,10 +239,44 @@ export function BriefSidebar({
   collapsed = false,
   onToggleCollapse,
   onConnectNew,
+  onOpenChat,
 }: BriefSidebarProps) {
   const [reposOpen, setReposOpen] = useState(true);
+  const [chatsOpen, setChatsOpen] = useState(false);
+  const [chatConversations, setChatConversations] = useState<SidebarConversation[]>([]);
+  const [chatsLoading, setChatsLoading] = useState(false);
+  const [expandedChatRepos, setExpandedChatRepos] = useState<Set<string>>(new Set());
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const fetchChats = useCallback(async () => {
+    setChatsLoading(true);
+    try {
+      const res = await fetch("/api/chat/history");
+      if (res.ok) {
+        const data = await res.json();
+        setChatConversations(
+          (data.conversations ?? []).map((c: Record<string, unknown>) => ({
+            sessionId: c.sessionId,
+            briefId: c.briefId,
+            title: c.title,
+            repoName: c.repoName,
+            lastMessage: c.lastMessage,
+            lastTimestamp: c.lastTimestamp,
+            messageCount: c.messageCount,
+          }))
+        );
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setChatsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (chatsOpen && chatConversations.length === 0) fetchChats();
+  }, [chatsOpen, chatConversations.length, fetchChats]);
 
   // Safety guard — brief may be undefined during hot-reload
   if (!brief?.repoInfo) return null;
@@ -710,6 +781,160 @@ export function BriefSidebar({
               </button>
             );
           })}
+        </div>
+
+        {/* Divider */}
+        <div
+          style={{
+            height: 1,
+            backgroundColor: "rgba(55,53,47,0.06)",
+            margin: "4px 6px",
+          }}
+        />
+
+        {/* Chats section */}
+        <div style={{ padding: "6px 0" }}>
+          <button
+            onClick={() => setChatsOpen((p) => !p)}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              width: "100%",
+              padding: "4px 6px",
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              fontSize: 12,
+              fontWeight: 500,
+              color: "rgb(120,119,116)",
+              textTransform: "uppercase",
+              letterSpacing: "0.04em",
+            }}
+          >
+            {chatsOpen ? <IconChevronDown size={12} /> : <IconChevronRight size={12} />}
+            Chats
+          </button>
+
+          {chatsOpen && (
+            <div style={{ paddingLeft: 4, marginTop: 2 }}>
+              {chatsLoading ? (
+                <div style={{ padding: "8px 8px", fontSize: 12, color: "rgb(160,159,156)" }}>
+                  Loading…
+                </div>
+              ) : chatConversations.length === 0 ? (
+                <div style={{ padding: "8px 8px", fontSize: 12, color: "rgb(160,159,156)" }}>
+                  No conversations yet
+                </div>
+              ) : (
+                (() => {
+                  const repoGroups = new Map<string, { repoName: string; briefId: string; sessions: SidebarConversation[] }>();
+                  for (const conv of chatConversations) {
+                    const key = conv.briefId;
+                    if (!repoGroups.has(key)) {
+                      repoGroups.set(key, { repoName: conv.repoName, briefId: conv.briefId, sessions: [] });
+                    }
+                    repoGroups.get(key)!.sessions.push(conv);
+                  }
+
+                  return Array.from(repoGroups.values()).map((group) => {
+                    const isCurrentRepo = group.briefId === brief.id;
+                    const isExpanded = expandedChatRepos.has(group.briefId) || isCurrentRepo;
+                    return (
+                      <div key={group.briefId} style={{ marginBottom: 2 }}>
+                        <button
+                          onClick={() => {
+                            setExpandedChatRepos((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(group.briefId)) next.delete(group.briefId);
+                              else next.add(group.briefId);
+                              return next;
+                            });
+                          }}
+                          className="sidebar-btn-hover"
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                            width: "100%",
+                            padding: "4px 8px",
+                            background: "none",
+                            border: "none",
+                            cursor: "pointer",
+                            borderRadius: 4,
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: isCurrentRepo ? "rgb(55,53,47)" : "rgb(100,99,97)",
+                          }}
+                        >
+                          <span style={{ flexShrink: 0, transform: isExpanded ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "flex" }}>
+                            <IconChevronRight size={10} />
+                          </span>
+                          <IconGitHub />
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, textAlign: "left" }}>
+                            {group.repoName}
+                          </span>
+                          <span style={{ fontSize: 10, color: "rgb(180,179,176)", flexShrink: 0 }}>
+                            {group.sessions.length}
+                          </span>
+                        </button>
+
+                        {isExpanded && (
+                          <div style={{ paddingLeft: 16 }}>
+                            {group.sessions.map((conv) => (
+                              <button
+                                key={conv.sessionId}
+                                onClick={() => {
+                                  if (group.briefId !== brief.id) {
+                                    onRepoSelect?.(group.briefId);
+                                  }
+                                  onOpenChat?.(conv.sessionId, group.briefId);
+                                }}
+                                className="sidebar-btn-hover"
+                                style={{
+                                  display: "block",
+                                  width: "100%",
+                                  padding: "5px 8px",
+                                  background: "none",
+                                  border: "none",
+                                  cursor: "pointer",
+                                  borderRadius: 4,
+                                  textAlign: "left",
+                                }}
+                              >
+                                <div style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: 6,
+                                }}>
+                                  <span style={{ flexShrink: 0, color: "rgb(160,159,156)" }}>
+                                    <IconChat />
+                                  </span>
+                                  <span style={{
+                                    fontSize: 12,
+                                    color: "rgb(100,99,97)",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                    whiteSpace: "nowrap",
+                                    flex: 1,
+                                  }}>
+                                    {conv.title}
+                                  </span>
+                                  <span style={{ fontSize: 10, color: "rgb(180,179,176)", flexShrink: 0 }}>
+                                    {formatTimeAgo(conv.lastTimestamp)}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  });
+                })()
+              )}
+            </div>
+          )}
         </div>
 
         {/* Divider */}

@@ -5,6 +5,9 @@ function sanitize(text: string): string {
     .replace(/["`]/g, "'")
     .replace(/[<>]/g, "")
     .replace(/[\n\r]/g, " ")
+    .replace(/[(){}[\]|;#&]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
     .slice(0, 60);
 }
 
@@ -21,7 +24,7 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
   let nid = 0;
 
   // User entry point
-  chart += `  USER([fa:fa-user User])\n`;
+  chart += `  USER(["User"])\n`;
 
   // Classify modules into layers
   const frontend: { name: string; id: string }[] = [];
