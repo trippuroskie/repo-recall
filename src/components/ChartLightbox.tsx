@@ -10,7 +10,9 @@ interface ChartLightboxProps {
 
 export function ChartLightbox({ svg, onClose }: ChartLightboxProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<HTMLDivElement>(null);
   const [scale, setScale] = useState(1);
+  const [baseScale, setBaseScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -18,6 +20,26 @@ export function ChartLightbox({ svg, onClose }: ChartLightboxProps) {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => setMounted(true), []);
+
+  // Compute initial scale to fit SVG to viewport
+  useEffect(() => {
+    if (!mounted || !svgRef.current || !containerRef.current) return;
+    const svgEl = svgRef.current.querySelector("svg");
+    if (!svgEl) return;
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const svgW = svgEl.getBoundingClientRect().width;
+    const svgH = svgEl.getBoundingClientRect().height;
+    if (svgW === 0 || svgH === 0) return;
+    // Available space with padding
+    const availW = containerRect.width - 96;
+    const availH = containerRect.height - 96;
+    const fitScale = Math.min(availW / svgW, availH / svgH);
+    // Only scale up if diagram is smaller than available space
+    if (fitScale > 1) {
+      setBaseScale(fitScale);
+      setScale(fitScale);
+    }
+  }, [mounted, svg]);
 
   // Close on Escape
   useEffect(() => {
@@ -28,10 +50,17 @@ export function ChartLightbox({ svg, onClose }: ChartLightboxProps) {
     return () => window.removeEventListener("keydown", handleKey);
   }, [onClose]);
 
-  // Zoom with scroll wheel
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setScale((s) => Math.min(5, Math.max(0.2, s - e.deltaY * 0.001)));
+  // Zoom with scroll wheel — must use native listener with { passive: false }
+  // to allow preventDefault (React attaches wheel listeners as passive)
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function handleWheel(e: WheelEvent) {
+      e.preventDefault();
+      setScale((s) => Math.min(5, Math.max(0.2, s - e.deltaY * 0.001)));
+    }
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
   }, []);
 
   // Drag handlers
@@ -62,9 +91,9 @@ export function ChartLightbox({ svg, onClose }: ChartLightboxProps) {
 
   // Reset view
   const handleReset = useCallback(() => {
-    setScale(1);
+    setScale(baseScale);
     setPosition({ x: 0, y: 0 });
-  }, []);
+  }, [baseScale]);
 
   if (!mounted) return null;
 
@@ -109,7 +138,7 @@ export function ChartLightbox({ svg, onClose }: ChartLightboxProps) {
             textAlign: "center",
           }}
         >
-          {Math.round(scale * 100)}%
+          {Math.round((scale / baseScale) * 100)}%
         </span>
         <button
           onClick={() => setScale((s) => Math.max(0.2, s - 0.25))}
@@ -151,7 +180,6 @@ export function ChartLightbox({ svg, onClose }: ChartLightboxProps) {
       {/* Chart area */}
       <div
         ref={containerRef}
-        onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
@@ -165,6 +193,7 @@ export function ChartLightbox({ svg, onClose }: ChartLightboxProps) {
         }}
       >
         <div
+          ref={svgRef}
           style={{
             transform: `translate(${position.x}px, ${position.y}px) scale(${scale})`,
             transformOrigin: "center center",
