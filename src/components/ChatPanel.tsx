@@ -512,12 +512,12 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
 
   function renderContent(text: string) {
     // Split code blocks first
-    const blocks = text.split(/(```\w*\n[\s\S]*?```)/g);
+    const blocks = text.split(/(```\w*\s*\n[\s\S]*?```)/g);
     const elements: React.ReactNode[] = [];
 
     for (let i = 0; i < blocks.length; i++) {
       const block = blocks[i];
-      const codeMatch = block.match(/^```(\w*)\n([\s\S]*?)```$/);
+      const codeMatch = block.match(/^```(\w*)\s*\n([\s\S]*?)```$/);
       if (codeMatch) {
         const lang = codeMatch[1].toLowerCase();
         if (lang === "mermaid") {

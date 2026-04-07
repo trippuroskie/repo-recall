@@ -62,7 +62,8 @@ export function MermaidChart({
           setSvg(renderedSvg);
           setError(false);
         }
-      } catch {
+      } catch (err) {
+        console.warn("[MermaidChart] render failed:", err);
         if (!cancelled) {
           setError(true);
         }
@@ -75,7 +76,34 @@ export function MermaidChart({
     };
   }, [chart]);
 
-  if (error) return null;
+  if (error) {
+    return (
+      <div
+        className={`mermaid-container ${className}`}
+        style={{
+          backgroundColor: "rgba(55,53,47,0.02)",
+          border: "1px solid rgba(55,53,47,0.06)",
+          borderRadius: 8,
+          padding: "16px",
+          marginBottom: 16,
+          overflow: "auto",
+        }}
+      >
+        <pre
+          style={{
+            margin: 0,
+            fontSize: 12,
+            lineHeight: 1.5,
+            color: "rgb(100,99,97)",
+            whiteSpace: "pre-wrap",
+            fontFamily: "ui-monospace, SFMono-Regular, 'SF Mono', Menlo, monospace",
+          }}
+        >
+          {chart}
+        </pre>
+      </div>
+    );
+  }
 
   if (!svg) {
     return (
