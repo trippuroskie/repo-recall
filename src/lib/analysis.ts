@@ -7,6 +7,7 @@ import type {
   FeatureMapping,
   Milestone,
   Entrypoint,
+  TimelineData,
 } from "./types";
 
 // Strip HTML tags and comments from a string
@@ -490,6 +491,12 @@ export function generateBrief(
 
     timeline,
     entrypoints,
+
+    timelineData: {
+      prs: prs.filter((pr) => pr.mergedAt),
+      commits,
+      milestones: timeline,
+    },
   };
 }
 

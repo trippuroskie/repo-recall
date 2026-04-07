@@ -10,6 +10,7 @@ import type {
   CodemapNode,
   Citation,
   FeatureMapping,
+  TimelineData,
 } from "../types";
 import { ToolExecutor, type ExecutorConfig } from "./executor";
 import { AGENT_TOOLS, type AgentToolCall, type ToolResult } from "./tools";
@@ -215,6 +216,27 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
     emit,
   });
 
+  // Phase 3: Generate AI milestone summaries and populate timelineData
+  emit({ type: "progress", phase: "Generating timeline insights", current: 2.5, total: 3 });
+
+  const mergedPRs = prs.filter((pr) => pr.mergedAt);
+  const timelineData: TimelineData = {
+    prs: mergedPRs,
+    commits,
+    milestones: brief.timeline,
+  };
+
+  try {
+    const summaries = await generateMilestoneSummaries(brief.timeline, mergedPRs, commits);
+    if (summaries) {
+      timelineData.milestoneSummaries = summaries;
+    }
+  } catch {
+    // Non-critical — proceed without AI summaries
+  }
+
+  brief.timelineData = timelineData;
+
   emit({ type: "progress", phase: "Complete", current: 3, total: 3 });
 
   return brief;
@@ -388,6 +410,13 @@ function buildBriefFromSynthesis(
     entrypoints: staticBrief.entrypoints,
   };
 
+  // Populate timelineData with raw PR/commit data for visualizations
+  brief.timelineData = {
+    prs: prs.filter((pr) => pr.mergedAt),
+    commits,
+    milestones: brief.timeline,
+  };
+
   // Parse codemap if present
   if (codemapRaw) {
     try {
@@ -455,4 +484,72 @@ function buildFallbackSummary(toolResults: ToolResult[]): string {
   }
 
   return sections.join("\n");
+}
+
+async function generateMilestoneSummaries(
+  milestones: ProjectBrief["timeline"],
+  prs: PRSummary[],
+  commits: CommitSummary[]
+): Promise<Record<string, string> | null> {
+  if (milestones.length === 0) return null;
+
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return null;
+
+  // Build compact context for the LLM
+  const milestoneContext = milestones.slice(0, 12).map((ms) => {
+    const relatedPRs = prs
+      .filter((pr) => ms.prs.includes(pr.number))
+      .map((pr) => `  - PR #${pr.number}: ${pr.title}${pr.body ? ` — ${pr.body.slice(0, 150)}` : ""}`);
+    const monthCommits = commits.filter((c) => c.date.startsWith(ms.date));
+    return `### ${ms.date} — ${ms.title} (theme: ${ms.theme})
+${ms.description}
+${relatedPRs.length > 0 ? `PRs:\n${relatedPRs.join("\n")}` : ""}
+${monthCommits.length > 0 ? `${monthCommits.length} commits this period` : ""}`;
+  }).join("\n\n");
+
+  const prompt = `You are summarizing the evolution of a software project. For each milestone period below, write a concise 1-2 sentence narrative summary that captures the key changes and their significance. Focus on the "why" and impact, not just listing what changed.
+
+${milestoneContext}
+
+Respond with valid JSON: an object where keys are the date strings (e.g., "2024-03") and values are the summary strings. Only include dates from the milestones above.`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://reporecall.dev",
+        "X-Title": "RepoRecall Timeline",
+      },
+      body: JSON.stringify({
+        model: EXPLORATION_MODEL,
+        messages: [
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.3,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return null;
+
+    const result = await response.json();
+    const content = result.choices?.[0]?.message?.content;
+    if (!content) return null;
+
+    let cleaned = content.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+    }
+    return JSON.parse(cleaned) as Record<string, string>;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
