@@ -303,12 +303,14 @@ function BriefPage() {
           {/* Section content */}
           <div className={isCodemap ? "" : "max-w-3xl"} style={isCodemap ? { height: "100%" } : undefined}>
             {sectionComponents[activeSection]}
+            {/* Spacer so content can scroll above the floating chat bar */}
+            {!isCodemap && <div style={{ height: 120 }} aria-hidden />}
           </div>
         </div>
         </div>
 
         {/* Chat */}
-        <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} initialSessionId={chatSessionId ?? searchParams.get("chat") ?? undefined} />
+        <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} initialSessionId={chatSessionId ?? searchParams.get("chat") ?? undefined} sidebarWidth={sidebarCollapsed ? 48 : 240} />
       </div>
     </div>
   );

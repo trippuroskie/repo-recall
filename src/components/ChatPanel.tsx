@@ -34,6 +34,7 @@ interface ChatPanelProps {
   brief: ProjectBrief;
   onNavigateToBrief?: (briefId: string) => void;
   initialSessionId?: string;
+  sidebarWidth?: number;
 }
 
 interface FileRef {
@@ -173,7 +174,7 @@ function ChatMermaidBlock({ chart }: { chart: string }) {
   );
 }
 
-export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPanelProps) {
+export function ChatPanel({ brief, onNavigateToBrief, initialSessionId, sidebarWidth = 0 }: ChatPanelProps) {
   const [expanded, setExpanded] = useState(!!initialSessionId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -754,13 +755,14 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
   // --- Collapsed bottom bar (DeepWiki style) ---
   if (!expanded) {
     return (
-      <div className="chat-bar-collapsed" style={{ flexShrink: 0 }}>
+      <div className="chat-bar-collapsed" style={{ position: "fixed", bottom: 0, left: sidebarWidth, right: 0, zIndex: 50, pointerEvents: "none" }}>
         <div
           style={{
             width: "100%",
             maxWidth: 720,
             margin: "0 auto",
             padding: "0 24px 20px",
+            pointerEvents: "auto",
           }}
         >
           <form
@@ -769,11 +771,13 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
               display: "flex",
               alignItems: "center",
               gap: 0,
-              background: "#ffffff",
-              border: "1px solid #e0e0e0",
+              background: "rgba(255, 255, 255, 0.75)",
+              backdropFilter: "blur(12px)",
+              WebkitBackdropFilter: "blur(12px)",
+              border: "1px solid rgba(224, 224, 224, 0.6)",
               borderRadius: 14,
               padding: "8px 8px 8px 18px",
-              boxShadow: "0 1px 6px rgba(0,0,0,0.06)",
+              boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
             }}
           >
             <textarea
@@ -855,8 +859,10 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
                   gap: 5,
                   padding: "4px 10px",
                   borderRadius: 8,
-                  border: "1px solid var(--border)",
-                  background: "#ffffff",
+                  border: "1px solid rgba(224, 224, 224, 0.6)",
+                  background: "rgba(255, 255, 255, 0.6)",
+                  backdropFilter: "blur(12px)",
+                  WebkitBackdropFilter: "blur(12px)",
                   color: "var(--foreground-secondary)",
                   fontSize: 13,
                   cursor: "pointer",
