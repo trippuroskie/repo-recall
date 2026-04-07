@@ -757,14 +757,11 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
       <div className="chat-bar-collapsed">
         <div
           style={{
-            position: "fixed",
-            bottom: 0,
-            left: "50%",
-            transform: "translateX(-50%)",
             width: "100%",
             maxWidth: 720,
-            zIndex: 50,
-            padding: "0 24px 20px",
+            margin: "0 auto",
+            padding: "12px 24px 16px",
+            flexShrink: 0,
           }}
         >
           <form

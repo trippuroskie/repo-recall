@@ -195,21 +195,30 @@ function BriefPage() {
         onOpenChat={handleOpenChat}
       />
 
-      {/* Main content */}
+      {/* Main content + chat bar column */}
       <div
-        ref={contentRef}
         style={{
           flex: 1,
-          overflowY: isCodemap ? "hidden" : "auto",
           display: "flex",
-          justifyContent: isCodemap ? "stretch" : "center",
+          flexDirection: "column",
+          minWidth: 0,
+          height: "100%",
         }}
       >
         <div
+          ref={contentRef}
           style={{
-            width: "100%",
-            maxWidth: isCodemap ? "none" : 760,
-            padding: isCodemap ? "0" : "32px 48px 140px",
+            flex: 1,
+            overflowY: isCodemap ? "hidden" : "auto",
+            display: "flex",
+            justifyContent: isCodemap ? "stretch" : "center",
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: isCodemap ? "none" : 760,
+              padding: isCodemap ? "0" : "32px 48px 48px",
           }}
         >
           {/* Breadcrumb (hidden in codemap mode) */}
@@ -296,10 +305,11 @@ function BriefPage() {
             {sectionComponents[activeSection]}
           </div>
         </div>
-      </div>
+        </div>
 
-      {/* Chat */}
-      <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} initialSessionId={chatSessionId ?? searchParams.get("chat") ?? undefined} />
+        {/* Chat */}
+        <ChatPanel brief={brief} onNavigateToBrief={handleRepoSelect} initialSessionId={chatSessionId ?? searchParams.get("chat") ?? undefined} />
+      </div>
     </div>
   );
 }
