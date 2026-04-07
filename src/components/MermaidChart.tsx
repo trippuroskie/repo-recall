@@ -64,6 +64,8 @@ export function MermaidChart({
         }
       } catch (err) {
         console.warn("[MermaidChart] render failed:", err);
+        // Mermaid inserts error elements into the DOM on failure — clean them up
+        document.querySelectorAll(`[id*="${idRef.current}"]`).forEach((el) => el.remove());
         if (!cancelled) {
           setError(true);
         }
