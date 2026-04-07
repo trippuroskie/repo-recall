@@ -248,28 +248,8 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
             );
           }
         } else {
-          // Check for existing sessions and load the most recent one
-          const sessRes = await fetch(`/api/chat/sessions?briefId=${brief.id}`);
-          if (!sessRes.ok || cancelled) return;
-          const sessData = await sessRes.json();
-          if (cancelled) return;
-          if (sessData.sessions?.length > 0) {
-            const latestSession = sessData.sessions[0]; // Already sorted by updated_at desc
-            setSessionId(latestSession.id);
-            const res = await fetch(`/api/chat/messages?briefId=${brief.id}&sessionId=${latestSession.id}`);
-            if (!res.ok || cancelled) return;
-            const data = await res.json();
-            if (cancelled) return;
-            if (data.messages?.length > 0) {
-              setMessages(
-                data.messages.map((m: { id: string; role: string; content: string }) => ({
-                  id: m.id,
-                  role: m.role as "user" | "assistant",
-                  content: m.content,
-                }))
-              );
-            }
-          }
+          // No session specified — start a fresh chat
+          // Users can load previous sessions from the history sidebar
         }
       } catch {
         // Silently fail — user can still start fresh
