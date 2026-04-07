@@ -754,14 +754,13 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
   // --- Collapsed bottom bar (DeepWiki style) ---
   if (!expanded) {
     return (
-      <div className="chat-bar-collapsed">
+      <div className="chat-bar-collapsed" style={{ flexShrink: 0, position: "relative", marginTop: -40, background: "linear-gradient(to bottom, rgba(255,255,255,0) 0%, rgba(255,255,255,1) 50%)", paddingTop: 24 }}>
         <div
           style={{
             width: "100%",
             maxWidth: 720,
             margin: "0 auto",
-            padding: "12px 24px 16px",
-            flexShrink: 0,
+            padding: "0 24px 20px",
           }}
         >
           <form
