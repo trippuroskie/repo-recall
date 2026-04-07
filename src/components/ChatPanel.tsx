@@ -5,6 +5,8 @@ import { ArrowRight, X, Loader2, Trash2, ChevronDown, MessageSquare, History, Cl
 import { CodeViewer } from "@/components/CodeViewer";
 import { HighlightedCode } from "@/components/HighlightedCode";
 import { MermaidChart } from "@/components/MermaidChart";
+import { ChatTraceGroup } from "@/components/ChatTraceGroup";
+import type { TraceEvent } from "@/components/ChatTraceGroup";
 import type { ProjectBrief } from "@/lib/types";
 
 interface ChatConversation {
@@ -25,6 +27,7 @@ interface ChatMessage {
   id: string;
   role: "user" | "assistant";
   content: string;
+  traces?: TraceEvent[];
 }
 
 interface ChatPanelProps {
@@ -188,6 +191,8 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
   const [expandedRepos, setExpandedRepos] = useState<Set<string>>(new Set());
   const [searchMode, setSearchMode] = useState<"fast" | "deep">("fast");
   const [modeDropdownOpen, setModeDropdownOpen] = useState(false);
+  const [activeTraces, setActiveTraces] = useState<TraceEvent[]>([]);
+  const activeTracesRef = useRef<TraceEvent[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -366,6 +371,8 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
       setMessages(newMessages);
       setInput("");
       setStreaming(true);
+      setActiveTraces([]);
+      activeTracesRef.current = [];
 
       const assistantMessage: ChatMessage = {
         id: crypto.randomUUID(),
@@ -413,7 +420,20 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
 
             try {
               const parsed = JSON.parse(data);
-              if (parsed.content) {
+              if (parsed.type === "trace") {
+                const traceEvent: TraceEvent = { ...parsed, timestamp: Date.now() };
+                activeTracesRef.current = [...activeTracesRef.current, traceEvent];
+                setActiveTraces(activeTracesRef.current);
+              } else if (parsed.type === "error") {
+                setMessages((prev) => {
+                  const updated = [...prev];
+                  const last = updated[updated.length - 1];
+                  if (last.role === "assistant") {
+                    updated[updated.length - 1] = { ...last, content: parsed.message || "Something went wrong." };
+                  }
+                  return updated;
+                });
+              } else if (parsed.content) {
                 accumulated += parsed.content;
                 setMessages((prev) => {
                   const updated = [...prev];
@@ -443,6 +463,20 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
           return updated;
         });
       } finally {
+        // Attach traces to the assistant message so they persist after streaming ends
+        const finalTraces = activeTracesRef.current;
+        if (finalTraces.length > 0) {
+          setMessages((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+            if (last.role === "assistant") {
+              updated[updated.length - 1] = { ...last, traces: finalTraces };
+            }
+            return updated;
+          });
+        }
+        setActiveTraces([]);
+        activeTracesRef.current = [];
         setStreaming(false);
         abortRef.current = null;
       }
@@ -1356,70 +1390,65 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId }: ChatPa
                 </div>
               )}
 
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  style={{
-                    marginBottom: 28,
-                    animation: "fadeIn 0.2s ease-out",
-                  }}
-                >
+              {messages.map((msg) => {
+                const isLastAssistant =
+                  msg.role === "assistant" &&
+                  messages[messages.length - 1]?.id === msg.id;
+                const msgTraces = isLastAssistant && streaming
+                  ? activeTraces
+                  : msg.traces;
+                const hasTraces = msgTraces && msgTraces.length > 0;
+
+                return (
                   <div
+                    key={msg.id}
                     style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      marginBottom: 8,
+                      marginBottom: 32,
+                      animation: "fadeIn 0.2s ease-out",
                     }}
                   >
-                    <div
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: 12,
-                        fontWeight: 600,
-                        background:
-                          msg.role === "user"
-                            ? "var(--foreground)"
-                            : "var(--accent)",
-                        color: "#fff",
-                      }}
-                    >
-                      {msg.role === "user" ? "Y" : "R"}
-                    </div>
-                    <span
-                      style={{
-                        fontSize: 13,
-                        fontWeight: 600,
-                        color: "var(--foreground)",
-                      }}
-                    >
-                      {msg.role === "user" ? "You" : "RepoRecall"}
-                    </span>
+                    {msg.role === "user" ? (
+                      <div
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 600,
+                          lineHeight: 1.35,
+                          color: "var(--foreground)",
+                          letterSpacing: "-0.01em",
+                        }}
+                      >
+                        {msg.content}
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          fontSize: 14,
+                          lineHeight: 1.75,
+                          color: "var(--foreground)",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {hasTraces && (
+                          <ChatTraceGroup
+                            traces={msgTraces!}
+                            isStreaming={isLastAssistant && streaming && !msg.content}
+                            defaultExpanded={isLastAssistant && streaming}
+                          />
+                        )}
+                        {msg.content ? (
+                          renderContent(msg.content)
+                        ) : streaming && isLastAssistant ? (
+                          !hasTraces && (
+                            <span className="chat-thinking-dots">
+                              <span /><span /><span />
+                            </span>
+                          )
+                        ) : null}
+                      </div>
+                    )}
                   </div>
-                  <div
-                    style={{
-                      paddingLeft: 34,
-                      fontSize: 14,
-                      lineHeight: 1.75,
-                      color: "var(--foreground)",
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    {msg.content ? (
-                      renderContent(msg.content)
-                    ) : streaming && msg.role === "assistant" ? (
-                      <span className="chat-thinking-dots">
-                        <span /><span /><span />
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               <div ref={messagesEndRef} />
             </div>
           </div>

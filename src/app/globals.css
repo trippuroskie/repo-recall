@@ -182,6 +182,48 @@ body {
   40% { opacity: 1; transform: scale(1); }
 }
 
+/* ─── Chat Trace Group ─── */
+.chat-trace-group {
+  margin-bottom: 12px;
+}
+
+.chat-trace-summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(55, 53, 47, 0.024);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--foreground-secondary);
+  transition: background 0.15s;
+  user-select: none;
+  width: fit-content;
+}
+
+.chat-trace-summary:hover {
+  background: rgba(55, 53, 47, 0.05);
+}
+
+.chat-trace-details {
+  padding: 6px 0 6px 10px;
+  margin-top: 4px;
+  margin-left: 8px;
+  border-left: 2px solid var(--border);
+}
+
+.chat-trace-entry {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 2px 0;
+  color: var(--foreground-secondary);
+}
+
 /* ─── Codemap Layout ─── */
 .codemap-layout {
   display: flex;

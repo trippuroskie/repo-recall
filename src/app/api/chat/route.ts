@@ -56,36 +56,8 @@ export async function POST(request: NextRequest) {
     }
 
     const briefContext = buildBriefContext(brief);
-
-    // Fetch relevant file contents so the model can reference specific lines
     const userQuery = messages[messages.length - 1]?.content || "";
     const isDeep = mode === "deep";
-    const relevantFiles = selectRelevantFiles(brief, userQuery, isDeep ? 10 : 5);
-    let fileContext = "";
-    if (relevantFiles.length > 0) {
-      const token = (await getGitHubToken(user.id)) || undefined;
-      const fetched = await fetchRelevantFiles(
-        brief.repoInfo.owner,
-        brief.repoInfo.name,
-        relevantFiles,
-        token,
-        isDeep ? 60_000 : 30_000
-      );
-      if (fetched.length > 0) {
-        fileContext = "\n\n---\n\n## Source Files (with line numbers)\nUse these to reference specific code lines with [[file:path:line]] syntax.\n\n";
-        fileContext += fetched
-          .map(({ path, content }) => {
-            const numbered = content
-              .split("\n")
-              .map((line, i) => `${i + 1}: ${line}`)
-              .join("\n");
-            return `### ${path}\n\`\`\`\n${numbered}\n\`\`\``;
-          })
-          .join("\n\n");
-      }
-    }
-
-    const systemMessage = `${CHAT_SYSTEM_PROMPT}\n\n---\n\nHere is the analyzed brief for the repository:\n\n${briefContext}${fileContext}`;
 
     // Save the user message
     const userMsg = messages[messages.length - 1];
@@ -100,77 +72,116 @@ export async function POST(request: NextRequest) {
     // Reserve chat usage quota before the expensive AI call
     const usageId = await trackUsage(user.id, "chat_message");
 
-    // Abort upstream request after 60 seconds to prevent hung connections
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 60_000);
-
-    let response: Response;
-    try {
-      response = await fetch(
-        "https://openrouter.ai/api/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://reporecall.dev",
-            "X-Title": "RepoRecall",
-          },
-          body: JSON.stringify({
-            model: isDeep
-              ? (process.env.CHAT_MODEL_DEEP || "google/gemini-2.5-pro-preview")
-              : (process.env.CHAT_MODEL || "google/gemini-3-flash-preview"),
-            stream: true,
-            messages: [
-              { role: "system", content: systemMessage },
-              ...messages,
-            ],
-          }),
-          signal: controller.signal,
-        }
-      );
-    } catch (fetchErr) {
-      clearTimeout(timeout);
-      if (usageId) await rollbackUsage(usageId);
-      const isAbort =
-        fetchErr instanceof Error && fetchErr.name === "AbortError";
-      return new Response(
-        JSON.stringify({
-          error: isAbort
-            ? "Request timed out. Please try again."
-            : "Failed to connect to AI service",
-        }),
-        { status: isAbort ? 504 : 502, headers: { "Content-Type": "application/json" } }
-      );
-    } finally {
-      clearTimeout(timeout);
-    }
-
-    if (!response.ok) {
-      // Roll back usage reservation on upstream failure
-      if (usageId) await rollbackUsage(usageId);
-      const errorText = await response.text();
-      console.error("OpenRouter error:", errorText);
-      return new Response(
-        JSON.stringify({ error: "Failed to get response from AI" }),
-        { status: 502, headers: { "Content-Type": "application/json" } }
-      );
-    }
-
-    // Stream the response through to the client
+    // Stream the response — trace events are emitted during file fetching,
+    // then AI content tokens are piped through.
     const encoder = new TextEncoder();
-    let fullContent = "";
     const userId = user.id;
     const currentBriefId = briefId;
     const currentSessionId = sessionId;
 
     const stream = new ReadableStream({
-      async start(controller) {
-        const reader = response.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
+      async start(streamController) {
+        let fullContent = "";
 
         try {
+          // --- Phase 1: File selection & fetching with trace events ---
+          enqueueTrace(streamController, encoder, "select_files", "started", "Analyzing query...");
+          const relevantFiles = selectRelevantFiles(brief, userQuery, isDeep ? 10 : 5);
+          enqueueTrace(streamController, encoder, "select_files", "done", `Selected ${relevantFiles.length} files`, { files: relevantFiles });
+
+          let fileContext = "";
+          if (relevantFiles.length > 0) {
+            enqueueTrace(streamController, encoder, "fetch_files", "started", `Reading ${relevantFiles.length} files...`);
+            const token = (await getGitHubToken(userId)) || undefined;
+            const fetched = await fetchRelevantFilesWithTrace(
+              brief.repoInfo.owner,
+              brief.repoInfo.name,
+              relevantFiles,
+              token,
+              isDeep ? 60_000 : 30_000,
+              streamController,
+              encoder
+            );
+            enqueueTrace(streamController, encoder, "fetch_files", "done", `Read ${fetched.length} files`, { count: fetched.length });
+
+            if (fetched.length > 0) {
+              fileContext = "\n\n---\n\n## Source Files (with line numbers)\nUse these to reference specific code lines with [[file:path:line]] syntax.\n\n";
+              fileContext += fetched
+                .map(({ path, content }) => {
+                  const numbered = content
+                    .split("\n")
+                    .map((line, i) => `${i + 1}: ${line}`)
+                    .join("\n");
+                  return `### ${path}\n\`\`\`\n${numbered}\n\`\`\``;
+                })
+                .join("\n\n");
+            }
+          }
+
+          enqueueTrace(streamController, encoder, "build_context", "done", "Context ready");
+
+          const systemMessage = `${CHAT_SYSTEM_PROMPT}\n\n---\n\nHere is the analyzed brief for the repository:\n\n${briefContext}${fileContext}`;
+
+          // --- Phase 2: Call OpenRouter and stream AI content ---
+          const abortController = new AbortController();
+          const timeout = setTimeout(() => abortController.abort(), 60_000);
+
+          let response: Response;
+          try {
+            response = await fetch(
+              "https://openrouter.ai/api/v1/chat/completions",
+              {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${apiKey}`,
+                  "Content-Type": "application/json",
+                  "HTTP-Referer": "https://reporecall.dev",
+                  "X-Title": "RepoRecall",
+                },
+                body: JSON.stringify({
+                  model: isDeep
+                    ? (process.env.CHAT_MODEL_DEEP || "google/gemini-2.5-pro-preview")
+                    : (process.env.CHAT_MODEL || "google/gemini-3-flash-preview"),
+                  stream: true,
+                  messages: [
+                    { role: "system", content: systemMessage },
+                    ...messages,
+                  ],
+                }),
+                signal: abortController.signal,
+              }
+            );
+          } catch (fetchErr) {
+            clearTimeout(timeout);
+            if (usageId) await rollbackUsage(usageId);
+            const isAbort = fetchErr instanceof Error && fetchErr.name === "AbortError";
+            streamController.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "error", message: isAbort ? "Request timed out. Please try again." : "Failed to connect to AI service" })}\n\n`)
+            );
+            streamController.enqueue(encoder.encode("data: [DONE]\n\n"));
+            streamController.close();
+            return;
+          } finally {
+            clearTimeout(timeout);
+          }
+
+          if (!response.ok) {
+            if (usageId) await rollbackUsage(usageId);
+            const errorText = await response.text();
+            console.error("OpenRouter error:", errorText);
+            streamController.enqueue(
+              encoder.encode(`data: ${JSON.stringify({ type: "error", message: "Failed to get response from AI" })}\n\n`)
+            );
+            streamController.enqueue(encoder.encode("data: [DONE]\n\n"));
+            streamController.close();
+            return;
+          }
+
+          // Pipe AI content tokens through
+          const reader = response.body!.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
           while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -189,7 +200,7 @@ export async function POST(request: NextRequest) {
                 const delta = parsed.choices?.[0]?.delta?.content;
                 if (delta) {
                   fullContent += delta;
-                  controller.enqueue(
+                  streamController.enqueue(
                     encoder.encode(
                       `data: ${JSON.stringify({ content: delta })}\n\n`
                     )
@@ -210,13 +221,12 @@ export async function POST(request: NextRequest) {
           };
           await addChatMessage(currentBriefId, assistantMessage, userId, currentSessionId);
 
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
+          streamController.enqueue(encoder.encode("data: [DONE]\n\n"));
+          streamController.close();
         } catch (err) {
-          // Roll back usage reservation on stream failure
           if (usageId) await rollbackUsage(usageId);
           console.error("Stream error:", err);
-          controller.error(err);
+          streamController.error(err);
         }
       },
     });
@@ -295,13 +305,29 @@ function selectRelevantFiles(brief: ProjectBrief, query: string, limit = 5): str
   return scored.slice(0, limit).map((s) => s.path);
 }
 
-// Fetch file contents in parallel, with a total size cap
-async function fetchRelevantFiles(
+// Emit a trace event into the SSE stream
+function enqueueTrace(
+  controller: ReadableStreamDefaultController,
+  encoder: TextEncoder,
+  action: string,
+  status: "started" | "done",
+  detail: string,
+  extra?: Record<string, unknown>
+) {
+  controller.enqueue(
+    encoder.encode(`data: ${JSON.stringify({ type: "trace", action, status, detail, ...extra })}\n\n`)
+  );
+}
+
+// Fetch file contents in parallel, with a total size cap, emitting per-file trace events
+async function fetchRelevantFilesWithTrace(
   owner: string,
   repo: string,
   paths: string[],
-  token?: string,
-  maxTotalChars = 30_000
+  token: string | undefined,
+  maxTotalChars = 30_000,
+  streamController: ReadableStreamDefaultController,
+  encoder: TextEncoder
 ): Promise<{ path: string; content: string }[]> {
   const MAX_TOTAL_CHARS = maxTotalChars;
   const MAX_FILE_CHARS = 10_000;
@@ -325,6 +351,7 @@ async function fetchRelevantFiles(
     if (totalChars + content.length > MAX_TOTAL_CHARS) break;
     totalChars += content.length;
     files.push({ path, content });
+    enqueueTrace(streamController, encoder, "fetch_file", "done", path);
   }
 
   return files;
