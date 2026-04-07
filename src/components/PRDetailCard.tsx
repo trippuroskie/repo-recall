@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { PRSummary } from "@/lib/types";
 import { Tag } from "@/components/Tag";
+import { MarkdownBody } from "@/components/MarkdownBody";
 import { ChevronDown, ChevronUp, GitPullRequest, Plus, Minus, FileText } from "lucide-react";
 import { format } from "date-fns";
 
@@ -84,9 +85,10 @@ export function PRDetailCard({ pr }: { pr: PRSummary }) {
       {/* Expanded body */}
       {expanded && pr.body && (
         <div className="px-3 pb-3 pt-0 border-t border-border">
-          <div className="mt-2.5 text-xs text-foreground-secondary leading-relaxed whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
-            {pr.body.length > 800 ? pr.body.slice(0, 800) + "..." : pr.body}
-          </div>
+          <MarkdownBody
+            text={pr.body.length > 800 ? pr.body.slice(0, 800) + "..." : pr.body}
+            className="mt-2.5 text-xs text-foreground-secondary leading-relaxed break-words max-h-48 overflow-y-auto"
+          />
         </div>
       )}
     </div>

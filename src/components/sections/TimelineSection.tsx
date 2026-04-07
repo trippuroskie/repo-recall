@@ -7,6 +7,7 @@ import { MermaidChart } from "@/components/MermaidChart";
 import { CommitHeatmap } from "@/components/CommitHeatmap";
 import { LinesChangedChart } from "@/components/LinesChangedChart";
 import { PRDetailCard } from "@/components/PRDetailCard";
+import { MarkdownBody } from "@/components/MarkdownBody";
 import { buildTimelineChart } from "@/lib/charts";
 import { GitPullRequest, GitCommit, Sparkles } from "lucide-react";
 import { format } from "date-fns";
@@ -273,9 +274,10 @@ function MilestonesView({
             {aiSummary && (
               <div className="flex items-start gap-2 mt-2 mb-3 px-3 py-2 rounded-md bg-surface border border-border">
                 <Sparkles size={12} className="text-amber-500 mt-0.5 shrink-0" />
-                <p className="text-xs text-foreground-secondary leading-relaxed">
-                  {aiSummary}
-                </p>
+                <MarkdownBody
+                  text={aiSummary}
+                  className="text-xs text-foreground-secondary leading-relaxed"
+                />
               </div>
             )}
 
