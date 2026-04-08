@@ -34,8 +34,26 @@ export async function saveBrief(
     ...(brief.codemap ? { codemap: JSON.parse(JSON.stringify(brief.codemap)) } : {}),
     ...(brief.timelineData ? { timeline_data: JSON.parse(JSON.stringify(brief.timelineData)) } : {}),
   };
-  const { error } = await supabase.from("briefs").upsert(row);
+  const { error } = await supabase
+    .from("briefs")
+    .upsert(row, { onConflict: "user_id,repo_full_name" });
   if (error) throw new Error(`Failed to save brief: ${error.message}`);
+}
+
+export async function getBriefByRepo(
+  userId: string,
+  repoFullName: string
+): Promise<ProjectBrief | null> {
+  const supabase = await getClient();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("*")
+    .eq("user_id", userId)
+    .eq("repo_full_name", repoFullName)
+    .single();
+
+  if (error || !data) return null;
+  return rowToBrief(data);
 }
 
 export async function getBrief(id: string): Promise<ProjectBrief | null> {

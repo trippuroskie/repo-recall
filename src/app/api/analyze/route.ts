@@ -9,7 +9,7 @@ import {
 } from "@/lib/github";
 import { generateBrief } from "@/lib/analysis";
 import { runAgenticAnalysis, type ProgressEvent } from "@/lib/agent/orchestrator";
-import { saveBrief, trackUsage, rollbackUsage, getGitHubToken } from "@/lib/store";
+import { saveBrief, trackUsage, rollbackUsage, getGitHubToken, getBriefByRepo } from "@/lib/store";
 import { createServiceClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { repoUrl, token } = await request.json();
+    const { repoUrl, token, force } = await request.json();
 
     if (!repoUrl) {
       return NextResponse.json(
@@ -53,6 +53,20 @@ export async function POST(request: NextRequest) {
     }
 
     const { owner, repo } = parsed;
+
+    // Check for existing brief (skip if user explicitly wants to re-analyze)
+    if (!force) {
+      const existing = await getBriefByRepo(user.id, `${owner}/${repo}`);
+      if (existing) {
+        return NextResponse.json(
+          {
+            existing: true,
+            brief: existing,
+          },
+          { status: 200 }
+        );
+      }
+    }
     // Use provided token, or user's stored GitHub token, or server fallback
     const storedToken = await getGitHubToken(user.id);
     const authToken = token || storedToken || undefined;

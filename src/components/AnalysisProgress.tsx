@@ -82,6 +82,16 @@ export function AnalysisProgress({
           return;
         }
 
+        // Handle duplicate repo — API returns JSON instead of SSE stream
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data.existing && data.brief) {
+            onComplete(data.brief);
+            return;
+          }
+        }
+
         const reader = res.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
