@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, Fragment } from "react";
-import { createPortal } from "react-dom";
 import type { ProjectBrief } from "@/lib/types";
 import { MermaidChart } from "@/components/MermaidChart";
 import { CodeViewer } from "@/components/CodeViewer";
@@ -74,7 +73,9 @@ export function OverviewSection({ brief }: { brief: ProjectBrief }) {
   const uniqueFiles = [...new Set([...viewerFiles, ...allRefFiles])];
 
   return (
-    <div className="animate-fade-in">
+    <div className="overview-layout">
+      <div className={`overview-doc ${codeViewerOpen ? "overview-doc-split" : ""}`}>
+        <div className="animate-fade-in">
           {/* Header */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-foreground tracking-tight mb-1">
@@ -264,22 +265,22 @@ export function OverviewSection({ brief }: { brief: ProjectBrief }) {
             </div>
           )}
 
-      {/* Fixed code viewer panel — portaled to body to avoid transform context issues */}
-      {codeViewerOpen &&
-        createPortal(
-          <div className="overview-code-panel-fixed">
-            <CodeViewer
-              owner={repoInfo.owner}
-              repo={repoInfo.name}
-              files={uniqueFiles}
-              activeFile={activeFile}
-              activeLine={activeLine}
-              onFileSelect={setActiveFile}
-              onClose={handleCloseViewer}
-            />
-          </div>,
-          document.body
-        )}
+        </div>
+      </div>
+
+      {codeViewerOpen && (
+        <div className="overview-code-panel">
+          <CodeViewer
+            owner={repoInfo.owner}
+            repo={repoInfo.name}
+            files={uniqueFiles}
+            activeFile={activeFile}
+            activeLine={activeLine}
+            onFileSelect={setActiveFile}
+            onClose={handleCloseViewer}
+          />
+        </div>
+      )}
     </div>
   );
 }
