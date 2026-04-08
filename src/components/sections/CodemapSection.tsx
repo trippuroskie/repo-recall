@@ -7,6 +7,7 @@ import type { ProjectBrief, CodemapNode, Citation } from "@/lib/types";
 
 interface CodemapSectionProps {
   brief: ProjectBrief;
+  onCodePanelToggle?: (open: boolean) => void;
 }
 
 interface CodeRef {
@@ -176,7 +177,7 @@ function AICodemapNode({
   );
 }
 
-export function CodemapSection({ brief }: CodemapSectionProps) {
+export function CodemapSection({ brief, onCodePanelToggle }: CodemapSectionProps) {
   // Determine if we have an AI-generated codemap
   const useAI = hasAICodemap(brief);
 
@@ -208,11 +209,13 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
     setActiveFile(ref.path);
     setActiveLine(ref.line || null);
     setCodeViewerOpen(true);
-  }, []);
+    onCodePanelToggle?.(true);
+  }, [onCodePanelToggle]);
 
   const handleCloseViewer = useCallback(() => {
     setCodeViewerOpen(false);
-  }, []);
+    onCodePanelToggle?.(false);
+  }, [onCodePanelToggle]);
 
   // Collect all referenced files for the CodeViewer tab bar
   const allReferencedFiles = useAI
@@ -226,7 +229,7 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
     // ── AI Codemap rendering ──
     const codemap = brief.codemap!;
     return (
-      <div className="codemap-layout">
+      <div className={`codemap-layout ${codeViewerOpen ? "codemap-layout-split" : ""}`}>
         <div className={`codemap-doc ${codeViewerOpen ? "codemap-doc-split" : ""}`}>
           <div className="codemap-header">
             <h1 className="codemap-title">{codemap.title || `${brief.repoInfo.name} Architecture`}</h1>

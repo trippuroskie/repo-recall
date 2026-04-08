@@ -42,6 +42,7 @@ function BriefPage() {
   const [reanalyzing, setReanalyzing] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | undefined>(undefined);
   const [overviewCodeOpen, setOverviewCodeOpen] = useState(false);
+  const [codemapCodeOpen, setCodemapCodeOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -70,6 +71,8 @@ function BriefPage() {
 
   const handleNav = useCallback((section: string) => {
     setActiveSection(section);
+    setOverviewCodeOpen(false);
+    setCodemapCodeOpen(false);
     contentRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
@@ -148,13 +151,13 @@ function BriefPage() {
     );
   }
 
-  const isCodemap = activeSection === "codemap";
   const isOverviewSplit = activeSection === "overview" && overviewCodeOpen;
-  const isFullWidth = isCodemap || isOverviewSplit;
+  const isCodemapSplit = activeSection === "codemap" && codemapCodeOpen;
+  const isFullWidth = isOverviewSplit || isCodemapSplit;
 
   const sectionComponents: Record<string, React.ReactNode> = {
     overview: <OverviewSection brief={brief} onCodePanelToggle={setOverviewCodeOpen} />,
-    codemap: <CodemapSection brief={brief} />,
+    codemap: <CodemapSection brief={brief} onCodePanelToggle={setCodemapCodeOpen} />,
     architecture: <ArchitectureSection brief={brief} />,
     features: <FeaturesSection brief={brief} />,
     business: <BusinessSection brief={brief} />,
