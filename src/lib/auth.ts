@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { User } from "@supabase/supabase-js";
 
 const DEV_MOCK_USER: User = {
-  id: "dev-bypass-user",
+  id: "00000000-0000-0000-0000-000000000000",
   aud: "authenticated",
   role: "authenticated",
   email: "dev@localhost",

@@ -304,7 +304,7 @@ function BriefPage() {
           <div className={isCodemap ? "" : "max-w-3xl"} style={isCodemap ? { height: "100%" } : undefined}>
             {sectionComponents[activeSection]}
             {/* Spacer so content can scroll above the floating chat bar */}
-            {!isCodemap && <div style={{ height: 120 }} aria-hidden />}
+            {!isCodemap && <div style={{ height: 160 }} aria-hidden />}
           </div>
         </div>
         </div>

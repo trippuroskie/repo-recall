@@ -44,6 +44,17 @@ export default function DashboardPage() {
   const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
 
+  const filteredBriefs = briefs.filter((b) => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      b.repoInfo.name.toLowerCase().includes(q) ||
+      b.repoInfo.owner.toLowerCase().includes(q) ||
+      b.overview.summary.toLowerCase().includes(q) ||
+      b.architecture.stack.some((t) => t.toLowerCase().includes(q))
+    );
+  });
+
   useEffect(() => {
     fetchBriefs();
     fetchChatHistory();
@@ -105,8 +116,8 @@ export default function DashboardPage() {
       </header>
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
-        {/* New brief form */}
-        {showForm && (
+        {/* New brief form (hidden when empty — the empty state has its own form) */}
+        {showForm && briefs.length > 0 && (
           <div className="mb-8 pb-8 border-b border-border animate-fade-in">
             <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-4">
               Analyze a repository
@@ -123,8 +134,10 @@ export default function DashboardPage() {
             </h1>
             <p className="text-sm text-foreground-secondary mt-1">
               {briefs.length === 0
-                ? "No briefs yet. Analyze a repo to get started."
-                : `${briefs.length} project brief(s)`}
+                ? "Get started by analyzing a repo below."
+                : searchQuery
+                  ? `${filteredBriefs.length} of ${briefs.length} brief(s)`
+                  : `${briefs.length} project brief(s)`}
             </p>
           </div>
           {briefs.length > 0 && (
@@ -154,27 +167,21 @@ export default function DashboardPage() {
             ))}
           </div>
         ) : briefs.length === 0 ? (
-          <div className="border border-dashed border-border rounded-xl p-12 text-center">
-            <p className="text-foreground-secondary text-sm mb-4">
-              Paste a GitHub repo URL on the{" "}
-              <Link href="/" className="text-accent hover:underline">
-                home page
-              </Link>{" "}
-              or click &quot;New Brief&quot; above.
+          <div className="border border-border rounded-xl p-10 text-center">
+            <h2 className="text-lg font-semibold text-foreground mb-2">
+              Analyze your first repo
+            </h2>
+            <p className="text-foreground-secondary text-sm mb-6 max-w-md mx-auto">
+              Paste a GitHub repo URL below to generate a structured briefing
+              — architecture, features, business context, and where to start.
             </p>
+            <div className="max-w-lg mx-auto">
+              <AnalyzeForm compact />
+            </div>
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {briefs.filter((b) => {
-              if (!searchQuery) return true;
-              const q = searchQuery.toLowerCase();
-              return (
-                b.repoInfo.name.toLowerCase().includes(q) ||
-                b.repoInfo.owner.toLowerCase().includes(q) ||
-                b.overview.summary.toLowerCase().includes(q) ||
-                b.architecture.stack.some((t) => t.toLowerCase().includes(q))
-              );
-            }).map((brief) => (
+            {filteredBriefs.map((brief) => (
               <Link
                 key={brief.id}
                 href={`/brief/${brief.id}`}
