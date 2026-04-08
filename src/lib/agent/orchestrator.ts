@@ -285,9 +285,11 @@ async function synthesize(input: SynthesisInput): Promise<ProjectBrief> {
   const includedFiles: string[] = [];
   for (const r of keyReads) {
     const content = r.result;
-    if (content.length <= fileBudget) {
-      includedFiles.push(`### ${r.params.path}\n\`\`\`\n${content}\n\`\`\``);
-      fileBudget -= content.length;
+    // Escape triple-backticks in file content to prevent breaking prompt fences
+    const safeContent = content.replace(/```/g, "`\u200B``");
+    if (safeContent.length <= fileBudget) {
+      includedFiles.push(`### ${r.params.path}\n\`\`\`\n${safeContent}\n\`\`\``);
+      fileBudget -= safeContent.length;
     }
     if (fileBudget <= 0) break;
   }
@@ -469,15 +471,11 @@ function buildBriefFromSynthesis(
   const diagramsRaw = data.diagrams as Record<string, string> | undefined;
   if (diagramsRaw) {
     const diagrams: ProjectBrief["diagrams"] = {};
-    if (typeof diagramsRaw.overview === "string" && diagramsRaw.overview.includes("graph")) {
-      diagrams.overview = diagramsRaw.overview;
-    }
-    if (typeof diagramsRaw.architecture === "string" && diagramsRaw.architecture.includes("graph")) {
-      diagrams.architecture = diagramsRaw.architecture;
-    }
-    if (typeof diagramsRaw.stack === "string" && diagramsRaw.stack.includes("graph")) {
-      diagrams.stack = diagramsRaw.stack;
-    }
+    const isValidMermaid = (v: unknown): v is string =>
+      typeof v === "string" && /^\s*graph\s+(TD|LR|TB|BT|RL)\b/i.test(v);
+    if (isValidMermaid(diagramsRaw.overview)) diagrams.overview = diagramsRaw.overview.trim();
+    if (isValidMermaid(diagramsRaw.architecture)) diagrams.architecture = diagramsRaw.architecture.trim();
+    if (isValidMermaid(diagramsRaw.stack)) diagrams.stack = diagramsRaw.stack.trim();
     if (Object.keys(diagrams).length > 0) {
       brief.diagrams = diagrams;
     }

@@ -255,7 +255,7 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
             <CodeViewer
               owner={brief.repoInfo.owner}
               repo={brief.repoInfo.name}
-              files={uniqueFiles.length > 0 ? uniqueFiles : []}
+              files={uniqueFiles}
               activeFile={activeFile}
               activeLine={activeLine}
               onFileSelect={setActiveFile}
@@ -342,7 +342,7 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
           <CodeViewer
             owner={brief.repoInfo.owner}
             repo={brief.repoInfo.name}
-            files={uniqueFiles.length > 0 ? uniqueFiles : []}
+            files={uniqueFiles}
             activeFile={activeFile}
             activeLine={activeLine}
             onFileSelect={setActiveFile}
