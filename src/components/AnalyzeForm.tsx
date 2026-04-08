@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, GitBranch, Lock } from "lucide-react";
-import { AnalysisProgress } from "@/components/AnalysisProgress";
-import type { ProjectBrief } from "@/lib/types";
 
 const EXAMPLE_REPOS = [
   { name: "openai/codex", description: "AI coding agent", tags: ["TypeScript", "Python", "AI"] },
@@ -23,37 +21,18 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const handleComplete = useCallback(
-    (brief: ProjectBrief) => {
-      router.push(`/brief/${brief.id}`);
-    },
-    [router]
-  );
-
-  const handleError = useCallback((message: string) => {
-    setError(message);
-    setAnalyzing(false);
-  }, []);
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!repoUrl.trim()) return;
     setError(null);
     setAnalyzing(true);
+    const params = new URLSearchParams({ repo: repoUrl.trim() });
+    if (token.trim()) params.set("token", token.trim());
+    router.push(`/analyze?${params.toString()}`);
   }
 
   return (
     <>
-      {/* Streaming analysis progress overlay */}
-      {analyzing && !error && (
-        <AnalysisProgress
-          repoUrl={repoUrl}
-          token={token || undefined}
-          onComplete={handleComplete}
-          onError={handleError}
-        />
-      )}
-
       <form onSubmit={handleSubmit} className="w-full max-w-xl">
         <div className="flex flex-col gap-3">
           <div

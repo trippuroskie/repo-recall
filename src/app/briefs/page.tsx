@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { Logo } from "@/components/Logo";
 import { UserMenu } from "@/components/UserMenu";
 import { AnalyzeForm } from "@/components/AnalyzeForm";
@@ -36,6 +37,14 @@ interface ChatConversation {
 }
 
 export default function DashboardPage() {
+  return (
+    <Suspense>
+      <DashboardContent />
+    </Suspense>
+  );
+}
+
+function DashboardContent() {
   const [briefs, setBriefs] = useState<ProjectBrief[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -43,6 +52,16 @@ export default function DashboardPage() {
   const [chatHistory, setChatHistory] = useState<ChatConversation[]>([]);
   const [chatHistoryOpen, setChatHistoryOpen] = useState(false);
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const err = searchParams.get("error");
+    if (err) {
+      setAnalyzeError(err);
+      window.history.replaceState({}, "", "/briefs");
+    }
+  }, [searchParams]);
 
   const filteredBriefs = briefs.filter((b) => {
     if (!searchQuery) return true;
@@ -116,6 +135,12 @@ export default function DashboardPage() {
       </header>
 
       <main className="flex-1 max-w-5xl mx-auto w-full px-6 py-8">
+        {analyzeError && (
+          <div className="mb-6 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700 animate-fade-in">
+            {analyzeError}
+          </div>
+        )}
+
         {/* New brief form (hidden when empty — the empty state has its own form) */}
         {showForm && briefs.length > 0 && (
           <div className="mb-8 pb-8 border-b border-border animate-fade-in">
