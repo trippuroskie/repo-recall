@@ -38,7 +38,7 @@ interface OrchestratorConfig {
   onProgress?: ProgressCallback;
 }
 
-const MAX_ITERATIONS = 20;
+const MAX_ITERATIONS = 35;
 const EXPLORATION_MODEL = process.env.AGENT_EXPLORATION_MODEL || "google/gemini-3-flash-preview";
 const SYNTHESIS_MODEL = process.env.AGENT_SYNTHESIS_MODEL || "google/gemini-3.1-pro-preview";
 
@@ -187,7 +187,7 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
       messages.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: toolResult.result.slice(0, 8000), // cap per-result size
+        content: toolResult.result.slice(0, 12000), // cap per-result size
       });
     }
   }

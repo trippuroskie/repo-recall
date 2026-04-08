@@ -15,7 +15,7 @@ import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
 
-export const maxDuration = 300; // 5 minutes — agentic analysis needs time for LLM iterations
+export const maxDuration = 420; // 7 minutes — increased for deeper agentic exploration (35 iterations)
 
 export async function POST(request: NextRequest) {
   try {
