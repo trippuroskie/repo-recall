@@ -55,10 +55,10 @@ export default function HomePage() {
           <Logo />
           <div className="flex items-center gap-4">
             <Link
-              href="/dashboard"
+              href="/briefs"
               className="text-sm text-foreground-secondary hover:text-foreground transition-colors"
             >
-              Dashboard
+              Briefs
             </Link>
             <UserMenu />
           </div>
@@ -131,7 +131,7 @@ export default function HomePage() {
             briefing product for developers returning to their own code.
           </p>
           <Link
-            href="/dashboard"
+            href="/briefs"
             className="inline-flex items-center gap-2 bg-foreground text-background px-5 py-2.5 rounded-xl text-sm font-medium hover:bg-foreground/90 transition-colors"
           >
             View Your Briefs

@@ -103,7 +103,7 @@ export default function SettingsPage() {
           </Link>
           <div className="flex items-center gap-4">
             <Link
-              href="/dashboard"
+              href="/briefs"
               className="text-sm text-foreground-secondary hover:text-foreground transition-colors flex items-center gap-1"
             >
               <ArrowLeft size={14} />

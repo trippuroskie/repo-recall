@@ -8,7 +8,7 @@ import { Suspense } from "react";
 
 function LoginForm() {
   const searchParams = useSearchParams();
-  const redirect = searchParams.get("redirect") || "/dashboard";
+  const redirect = searchParams.get("redirect") || "/briefs";
   const error = searchParams.get("error");
 
   const handleGitHubLogin = async () => {

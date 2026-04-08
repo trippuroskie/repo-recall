@@ -322,7 +322,7 @@ export function BriefSidebar({
 
         {/* Dashboard */}
         <a
-          href="/dashboard"
+          href="/briefs"
           title="Dashboard"
           className="sidebar-btn-hover"
           style={{
@@ -490,7 +490,7 @@ export function BriefSidebar({
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 2 }}>
           <a
-            href="/dashboard"
+            href="/briefs"
             title="Dashboard"
             className="sidebar-btn-subtle"
             style={{
