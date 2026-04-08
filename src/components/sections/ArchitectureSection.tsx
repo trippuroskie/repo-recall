@@ -12,8 +12,8 @@ import { Box, Folder, Plug, Package } from "lucide-react";
 
 export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
   const { architecture } = brief;
-  const systemChart = buildArchitectureChart(brief);
-  const stackChart = buildStackLayersChart(brief);
+  const systemChart = brief.diagrams?.architecture || buildArchitectureChart(brief);
+  const stackChart = brief.diagrams?.stack || buildStackLayersChart(brief);
   const depChart = buildDependencyChart(brief);
 
   const depCount = Object.keys(architecture.dependencies).length;

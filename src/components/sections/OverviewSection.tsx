@@ -8,7 +8,7 @@ import { formatDistanceToNow } from "date-fns";
 
 export function OverviewSection({ brief }: { brief: ProjectBrief }) {
   const { overview, repoInfo } = brief;
-  const flowChart = buildOverviewFlowChart(brief);
+  const flowChart = brief.diagrams?.overview || buildOverviewFlowChart(brief);
   const stats = overview.stats;
 
   return (

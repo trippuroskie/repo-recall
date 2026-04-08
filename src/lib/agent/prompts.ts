@@ -117,6 +117,11 @@ Output a valid JSON object with this exact structure:
         "citations": []
       }
     ]
+  },
+  "diagrams": {
+    "overview": "graph TD mermaid diagram showing the actual high-level data flow for this project",
+    "architecture": "graph TD mermaid diagram showing how key modules relate to each other",
+    "stack": "graph TD mermaid diagram showing the technology stack layers"
   }
 }
 
@@ -125,6 +130,18 @@ Output a valid JSON object with this exact structure:
 - Every codemap node should have at least one citation
 - Use the exact line numbers from the numbered file contents you received
 - The snippet should be a brief (1-2 line) excerpt of the key code at that location
+
+### Diagram Rules
+- Use actual module names, component names, and service names from the code you explored
+- Show real relationships you observed (imports, API calls, data flow), not assumptions
+- Keep diagrams focused: 8-15 nodes max, prefer clarity over completeness
+- Use subgraphs to group related nodes logically
+- Sanitize node labels: no special characters (){}[]|;#& — use only alphanumeric, spaces, hyphens
+- Wrap all node labels in double quotes inside brackets: N1["Label Here"]
+- Valid mermaid syntax only — each diagram must start with "graph TD" or "graph LR"
+- The overview diagram should show: user -> frontend -> API -> services -> data stores -> external services using real names
+- The architecture diagram should show actual import/dependency relationships between modules
+- The stack diagram should show technology layers with the actual technologies used
 
 ### Quality Standards
 - Descriptions should be specific and evidence-based, not generic

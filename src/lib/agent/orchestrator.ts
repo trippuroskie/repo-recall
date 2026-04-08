@@ -426,6 +426,24 @@ function buildBriefFromSynthesis(
     }
   }
 
+  // Parse AI-generated diagrams if present
+  const diagramsRaw = data.diagrams as Record<string, string> | undefined;
+  if (diagramsRaw) {
+    const diagrams: ProjectBrief["diagrams"] = {};
+    if (typeof diagramsRaw.overview === "string" && diagramsRaw.overview.includes("graph")) {
+      diagrams.overview = diagramsRaw.overview;
+    }
+    if (typeof diagramsRaw.architecture === "string" && diagramsRaw.architecture.includes("graph")) {
+      diagrams.architecture = diagramsRaw.architecture;
+    }
+    if (typeof diagramsRaw.stack === "string" && diagramsRaw.stack.includes("graph")) {
+      diagrams.stack = diagramsRaw.stack;
+    }
+    if (Object.keys(diagrams).length > 0) {
+      brief.diagrams = diagrams;
+    }
+  }
+
   return brief;
 }
 
