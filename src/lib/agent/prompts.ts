@@ -33,6 +33,16 @@ Systematically explore this codebase to build a deep understanding. Use the tool
 2. **Trace data flow**: Follow imports from entry points to understand how components connect
 3. **Identify patterns**: Search for key patterns (auth, routing, data fetching, state management)
 4. **Deep dive modules**: Read the most important modules in detail
+5. **Map dependencies**: Track which modules import which — identify hub files everything depends on
+
+### What to Track
+As you explore, build and maintain a mental model of:
+
+1. **Import/dependency graph**: Which modules import which? What are the key hub files that everything depends on?
+2. **Request lifecycle**: Trace at least one complete flow: user action → component → API call → service logic → database/external service → response rendering
+3. **State management**: How is application state managed? What are the stores/contexts and what do they hold?
+4. **Data models**: What are the core entities/types? Where are they defined and how do they flow through the system?
+5. **Configuration & environment**: What env vars, feature flags, or config files control behavior?
 
 ### Guidelines
 - Be efficient: read the most informative files first (entry points, configs, main modules)
@@ -41,7 +51,7 @@ Systematically explore this codebase to build a deep understanding. Use the tool
 - Use readFileLines when you only need a specific section of a large file
 - Skip test files, generated files, and boilerplate unless specifically relevant
 - Track what you learn — each tool call should build on previous findings
-- You have a budget of ~80 API calls. Be strategic.
+- You have a budget of ~120 API calls. Be strategic but thorough.
 
 ### When to Stop
 Call tools until you have enough understanding to produce a comprehensive analysis covering:
@@ -52,7 +62,17 @@ Call tools until you have enough understanding to produce a comprehensive analys
 - Authentication and authorization patterns
 - Main user-facing features and their implementations
 
-When you're ready to stop exploring, respond with a final message summarizing all your findings. Do NOT call any more tools — just output your complete findings as text.`;
+### Output Format
+When you finish exploring, structure your findings as:
+
+1. **Architecture Overview** — framework, patterns, key abstractions
+2. **Module Map** — each major module with its purpose and key exports
+3. **Data Flow** — how data moves through the system (request lifecycle)
+4. **Dependency Graph** — which modules depend on which (actual imports you saw)
+5. **Key Patterns** — auth, error handling, validation, caching, etc.
+6. **Notable Details** — anything surprising, complex, or particularly well/poorly designed
+
+When you're ready to stop exploring, respond with a final message summarizing all your findings in the format above. Do NOT call any more tools — just output your complete findings as text.`;
 }
 
 export const SYNTHESIS_PROMPT = `You are a code analysis expert. Given exploration findings from a codebase investigation, produce a structured analysis.
@@ -117,6 +137,11 @@ Output a valid JSON object with this exact structure:
         "citations": []
       }
     ]
+  },
+  "diagrams": {
+    "overview": "graph TD mermaid diagram showing the actual high-level data flow for this project",
+    "architecture": "graph TD mermaid diagram showing how key modules relate to each other",
+    "stack": "graph TD mermaid diagram showing the technology stack layers"
   }
 }
 
@@ -125,6 +150,18 @@ Output a valid JSON object with this exact structure:
 - Every codemap node should have at least one citation
 - Use the exact line numbers from the numbered file contents you received
 - The snippet should be a brief (1-2 line) excerpt of the key code at that location
+
+### Diagram Rules
+- Use actual module names, component names, and service names from the code you explored
+- Show real relationships you observed (imports, API calls, data flow), not assumptions
+- Keep diagrams focused: 8-15 nodes max, prefer clarity over completeness
+- Use subgraphs to group related nodes logically
+- Sanitize node labels: no special characters (){}[]|;#& — use only alphanumeric, spaces, hyphens
+- Wrap all node labels in double quotes inside brackets: N1["Label Here"]
+- Valid mermaid syntax only — each diagram must start with "graph TD" or "graph LR"
+- The overview diagram should show: user -> frontend -> API -> services -> data stores -> external services using real names
+- The architecture diagram should show actual import/dependency relationships between modules
+- The stack diagram should show technology layers with the actual technologies used
 
 ### Quality Standards
 - Descriptions should be specific and evidence-based, not generic

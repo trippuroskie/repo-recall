@@ -71,7 +71,7 @@ export class ToolExecutor {
   private repo: string;
   private fileTree: FileNode[];
   private apiCalls = 0;
-  private maxApiCalls = 80; // leave headroom under the ~100 budget
+  private maxApiCalls = 120; // increased budget for deeper exploration
   rateLimit: RateLimitInfo = { remaining: 5000, total: 5000, resetAt: new Date() };
 
   constructor(config: ExecutorConfig) {
@@ -133,9 +133,9 @@ export class ToolExecutor {
       const content = Buffer.from(data.content, "base64").toString("utf-8");
       const lines = content.split("\n");
       const numbered = lines.map((line, i) => `${i + 1}: ${line}`).join("\n");
-      const truncated = lines.length > 500;
+      const truncated = lines.length > 750;
       const result = truncated
-        ? numbered.split("\n").slice(0, 500).join("\n") + `\n... (truncated at 500/${lines.length} lines)`
+        ? numbered.split("\n").slice(0, 750).join("\n") + `\n... (truncated at 750/${lines.length} lines)`
         : numbered;
 
       return { ...base, result, truncated };

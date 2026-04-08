@@ -38,7 +38,7 @@ interface OrchestratorConfig {
   onProgress?: ProgressCallback;
 }
 
-const MAX_ITERATIONS = 20;
+const MAX_ITERATIONS = 35;
 const EXPLORATION_MODEL = process.env.AGENT_EXPLORATION_MODEL || "google/gemini-3-flash-preview";
 const SYNTHESIS_MODEL = process.env.AGENT_SYNTHESIS_MODEL || "google/gemini-3.1-pro-preview";
 
@@ -187,7 +187,7 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
       messages.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: toolResult.result.slice(0, 8000), // cap per-result size
+        content: toolResult.result.slice(0, 12000), // cap per-result size
       });
     }
   }
@@ -266,6 +266,45 @@ async function synthesize(input: SynthesisInput): Promise<ProjectBrief> {
     ? `\n\nFiles explored (${readFiles.length}):\n${readFiles.map((f) => `- ${f}`).join("\n")}`
     : "";
 
+  // Phase 3: Include key file contents for richer synthesis context
+  const keyReads = toolResults
+    .filter((r) => (r.tool === "readFile" || r.tool === "readFileLines") && !r.error && r.result.length > 0)
+    .sort((a, b) => {
+      const priority = (path: string) => {
+        if (path.includes("package.json") || path.includes("tsconfig")) return 0;
+        if (/app\/.*page\.(tsx?|jsx?)$/.test(path)) return 1;
+        if (/app\/.*layout\.(tsx?|jsx?)$/.test(path)) return 1;
+        if (/api\/.*route\.(tsx?|jsx?)$/.test(path)) return 2;
+        if (path.includes("/lib/") || path.includes("/utils/")) return 3;
+        return 4;
+      };
+      return priority(a.params.path as string) - priority(b.params.path as string);
+    });
+
+  let fileBudget = 30_000;
+  const includedFiles: string[] = [];
+  for (const r of keyReads) {
+    const content = r.result;
+    // Escape triple-backticks in file content to prevent breaking prompt fences
+    const safeContent = content.replace(/```/g, "`\u200B``");
+    if (safeContent.length <= fileBudget) {
+      includedFiles.push(`### ${r.params.path}\n\`\`\`\n${safeContent}\n\`\`\``);
+      fileBudget -= safeContent.length;
+    }
+    if (fileBudget <= 0) break;
+  }
+  const keyFilesSection = includedFiles.length > 0
+    ? `\n\n## Key File Contents\n\n${includedFiles.join("\n\n")}`
+    : "";
+
+  // Include search results summary
+  const searches = toolResults
+    .filter((r) => r.tool === "searchCode" && !r.error)
+    .map((r) => `- Search: "${r.params.query}" → ${r.result.split("\n")[0]}`);
+  const searchSection = searches.length > 0
+    ? `\n\n## Search Findings\n\n${searches.join("\n")}`
+    : "";
+
   const synthMessages = [
     { role: "system" as const, content: SYNTHESIS_PROMPT },
     {
@@ -278,6 +317,8 @@ ${repoInfo.topics.length > 0 ? `Topics: ${repoInfo.topics.join(", ")}` : ""}
 
 ${explorationSummary}
 ${fileListStr}
+${keyFilesSection}
+${searchSection}
 
 Produce the structured JSON analysis now.`,
     },
@@ -423,6 +464,20 @@ function buildBriefFromSynthesis(
       brief.codemap = parseCodemap(codemapRaw);
     } catch {
       // Skip codemap if it doesn't parse
+    }
+  }
+
+  // Parse AI-generated diagrams if present
+  const diagramsRaw = data.diagrams as Record<string, string> | undefined;
+  if (diagramsRaw) {
+    const diagrams: ProjectBrief["diagrams"] = {};
+    const isValidMermaid = (v: unknown): v is string =>
+      typeof v === "string" && /^\s*graph\s+(TD|LR|TB|BT|RL)\b/i.test(v);
+    if (isValidMermaid(diagramsRaw.overview)) diagrams.overview = diagramsRaw.overview.trim();
+    if (isValidMermaid(diagramsRaw.architecture)) diagrams.architecture = diagramsRaw.architecture.trim();
+    if (isValidMermaid(diagramsRaw.stack)) diagrams.stack = diagramsRaw.stack.trim();
+    if (Object.keys(diagrams).length > 0) {
+      brief.diagrams = diagrams;
     }
   }
 
