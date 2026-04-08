@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Fragment } from "react";
 import { ChevronDown, ChevronRight, FileCode, Layers, Box, Zap, Database, Globe } from "lucide-react";
 import { CodeViewer } from "@/components/CodeViewer";
-import type { ProjectBrief } from "@/lib/types";
+import type { ProjectBrief, CodemapNode, Citation } from "@/lib/types";
 
 interface CodemapSectionProps {
   brief: ProjectBrief;
@@ -31,8 +31,161 @@ interface MapSection {
   }[];
 }
 
+// Check if AI codemap has meaningful content
+function hasAICodemap(brief: ProjectBrief): boolean {
+  return !!(
+    brief.codemap &&
+    brief.codemap.nodes &&
+    brief.codemap.nodes.length > 0 &&
+    brief.codemap.nodes.some((n) => n.title && (n.description || n.children.length > 0))
+  );
+}
+
+// Parse inline [[file:path/to/file.ts:42]] references from description text
+function parseDescription(
+  text: string,
+  onRef: (ref: CodeRef) => void
+): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  const regex = /\[\[file:([^\]]+)\]\]/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = regex.exec(text)) !== null) {
+    // Text before the match
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+    // Parse file reference: "path/to/file.ts:42" or "path/to/file.ts"
+    const raw = match[1];
+    const colonIdx = raw.lastIndexOf(":");
+    let filePath: string;
+    let line: number | undefined;
+
+    if (colonIdx > 0 && /^\d+$/.test(raw.slice(colonIdx + 1))) {
+      filePath = raw.slice(0, colonIdx);
+      line = parseInt(raw.slice(colonIdx + 1), 10);
+    } else {
+      filePath = raw;
+    }
+
+    const ref: CodeRef = { path: filePath, line, label: raw };
+    parts.push(
+      <button
+        key={`ref-${match.index}`}
+        onClick={() => onRef(ref)}
+        className="codemap-code-ref"
+        style={{ display: "inline", margin: "0 2px" }}
+      >
+        {filePath.split("/").pop()}
+        {line != null ? `:${line}` : ""}
+      </button>
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : [text];
+}
+
+// Render a single AI codemap node and its children recursively
+function AICodemapNode({
+  node,
+  depth,
+  expandedNodes,
+  onToggle,
+  onCodeRef,
+}: {
+  node: CodemapNode;
+  depth: number;
+  expandedNodes: Set<string>;
+  onToggle: (id: string) => void;
+  onCodeRef: (ref: CodeRef) => void;
+}) {
+  const isExpanded = expandedNodes.has(node.id);
+  const hasChildren = node.children && node.children.length > 0;
+  const isTopLevel = depth === 0;
+
+  return (
+    <div className={isTopLevel ? "codemap-section" : ""} style={!isTopLevel ? { marginLeft: 16, marginTop: 4 } : undefined}>
+      {/* Node header */}
+      <button
+        onClick={() => onToggle(node.id)}
+        className={isTopLevel ? "codemap-section-header" : "codemap-item-header"}
+        style={!isTopLevel ? { cursor: "pointer", display: "flex", alignItems: "center", gap: 6, width: "100%", background: "none", border: "none", padding: "6px 0", textAlign: "left" } : undefined}
+      >
+        <div className={isTopLevel ? "codemap-section-header-left" : ""} style={!isTopLevel ? { display: "flex", alignItems: "center", gap: 6 } : undefined}>
+          <span className={isTopLevel ? "codemap-section-number" : "codemap-item-number"}>{node.id}</span>
+          <span className={isTopLevel ? "codemap-section-title" : "codemap-item-title"}>{node.title}</span>
+        </div>
+        {(hasChildren || node.description) && (
+          isExpanded ? (
+            <ChevronDown size={14} style={{ color: "var(--foreground-secondary)", flexShrink: 0 }} />
+          ) : (
+            <ChevronRight size={14} style={{ color: "var(--foreground-secondary)", flexShrink: 0 }} />
+          )
+        )}
+      </button>
+
+      {/* Expanded content */}
+      {isExpanded && (
+        <div style={{ paddingLeft: isTopLevel ? 0 : 8 }}>
+          {/* Description with inline file references */}
+          {node.description && (
+            <p className="codemap-section-desc" style={{ whiteSpace: "pre-wrap" }}>
+              {parseDescription(node.description, onCodeRef).map((part, i) => (
+                <Fragment key={i}>{part}</Fragment>
+              ))}
+            </p>
+          )}
+
+          {/* Citation chips */}
+          {node.citations && node.citations.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6, marginBottom: 8 }}>
+              {node.citations.map((c) => (
+                <button
+                  key={c.id}
+                  className="codemap-code-ref"
+                  onClick={() => onCodeRef({ path: c.filePath, line: c.startLine, label: c.filePath })}
+                  title={c.snippet || c.filePath}
+                >
+                  {c.id} {c.filePath.split("/").pop()}
+                  {c.startLine != null ? `:${c.startLine}` : ""}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Recurse into children */}
+          {hasChildren && node.children.map((child) => (
+            <AICodemapNode
+              key={child.id}
+              node={child}
+              depth={depth + 1}
+              expandedNodes={expandedNodes}
+              onToggle={onToggle}
+              onCodeRef={onCodeRef}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function CodemapSection({ brief }: CodemapSectionProps) {
-  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set(["1"]));
+  // Determine if we have an AI-generated codemap
+  const useAI = hasAICodemap(brief);
+
+  // Expand first top-level node by default; for AI codemap expand all top-level
+  const defaultExpanded = useAI
+    ? new Set(brief.codemap!.nodes.map((n) => n.id))
+    : new Set(["1"]);
+
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(defaultExpanded);
   const [activeFile, setActiveFile] = useState<string | null>(null);
   const [activeLine, setActiveLine] = useState<number | null>(null);
   const [codeViewerOpen, setCodeViewerOpen] = useState(false);
@@ -61,20 +214,65 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
     setCodeViewerOpen(false);
   }, []);
 
-  // Build the codemap sections from brief data
-  const sections = buildCodemapSections(brief);
-
-  // Collect all referenced files for the tab bar
-  const allReferencedFiles = sections.flatMap((s) =>
-    s.items.flatMap((item) => (item.codeRef ? [item.codeRef.path] : []))
-  );
+  // Collect all referenced files for the CodeViewer tab bar
+  const allReferencedFiles = useAI
+    ? collectCitationFiles(brief.codemap!.nodes)
+    : buildCodemapSections(brief).flatMap((s) =>
+        s.items.flatMap((item) => (item.codeRef ? [item.codeRef.path] : []))
+      );
   const uniqueFiles = [...new Set([...viewerFiles, ...allReferencedFiles])];
+
+  if (useAI) {
+    // ── AI Codemap rendering ──
+    const codemap = brief.codemap!;
+    return (
+      <div className="codemap-layout">
+        <div className={`codemap-doc ${codeViewerOpen ? "codemap-doc-split" : ""}`}>
+          <div className="codemap-header">
+            <h1 className="codemap-title">{codemap.title || `${brief.repoInfo.name} Architecture`}</h1>
+            {codemap.summary && (
+              <p className="codemap-subtitle">{codemap.summary}</p>
+            )}
+            <p className="codemap-subtitle" style={{ marginTop: 4, fontSize: 12, color: "var(--foreground-secondary)" }}>
+              Click on code references to view source.
+            </p>
+          </div>
+
+          {codemap.nodes.map((node) => (
+            <AICodemapNode
+              key={node.id}
+              node={node}
+              depth={0}
+              expandedNodes={expandedSections}
+              onToggle={toggleSection}
+              onCodeRef={handleCodeRef}
+            />
+          ))}
+        </div>
+
+        {codeViewerOpen && (
+          <div className="codemap-code-panel">
+            <CodeViewer
+              owner={brief.repoInfo.owner}
+              repo={brief.repoInfo.name}
+              files={uniqueFiles.length > 0 ? uniqueFiles : []}
+              activeFile={activeFile}
+              activeLine={activeLine}
+              onFileSelect={setActiveFile}
+              onClose={handleCloseViewer}
+            />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Static fallback rendering ──
+  const sections = buildCodemapSections(brief);
 
   return (
     <div className="codemap-layout">
-      {/* Left panel — structured architecture doc */}
       <div className={`codemap-doc ${codeViewerOpen ? "codemap-doc-split" : ""}`}>
-        {/* Header */}
         <div className="codemap-header">
           <h1 className="codemap-title">{brief.repoInfo.name} Architecture</h1>
           <p className="codemap-subtitle">
@@ -83,10 +281,8 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
           </p>
         </div>
 
-        {/* Sections */}
         {sections.map((section) => (
           <div key={section.id} className="codemap-section">
-            {/* Section header */}
             <button
               onClick={() => toggleSection(section.id)}
               className="codemap-section-header"
@@ -103,10 +299,8 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
               )}
             </button>
 
-            {/* Section description */}
             <p className="codemap-section-desc">{section.description}</p>
 
-            {/* Items */}
             {expandedSections.has(section.id) && (
               <div className="codemap-items">
                 {section.items.map((item) => (
@@ -143,7 +337,6 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
         ))}
       </div>
 
-      {/* Right panel — Code viewer */}
       {codeViewerOpen && (
         <div className="codemap-code-panel">
           <CodeViewer
@@ -159,6 +352,22 @@ export function CodemapSection({ brief }: CodemapSectionProps) {
       )}
     </div>
   );
+}
+
+// Recursively collect all citation file paths from codemap nodes
+function collectCitationFiles(nodes: CodemapNode[]): string[] {
+  const files: string[] = [];
+  for (const node of nodes) {
+    if (node.citations) {
+      for (const c of node.citations) {
+        if (c.filePath) files.push(c.filePath);
+      }
+    }
+    if (node.children) {
+      files.push(...collectCitationFiles(node.children));
+    }
+  }
+  return files;
 }
 
 function buildCodemapSections(brief: ProjectBrief): MapSection[] {
