@@ -274,7 +274,7 @@ export function CodemapSection({ brief, onCodePanelToggle }: CodemapSectionProps
   const sections = buildCodemapSections(brief);
 
   return (
-    <div className="codemap-layout">
+    <div className={`codemap-layout ${codeViewerOpen ? "codemap-layout-split" : ""}`}>
       <div className={`codemap-doc ${codeViewerOpen ? "codemap-doc-split" : ""}`}>
         <div className="codemap-header">
           <h1 className="codemap-title">{brief.repoInfo.name} Architecture</h1>
