@@ -28,7 +28,7 @@ interface CodeRef {
   label: string;
 }
 
-export function OverviewSection({ brief }: { brief: ProjectBrief }) {
+export function OverviewSection({ brief, onCodePanelToggle }: { brief: ProjectBrief; onCodePanelToggle?: (open: boolean) => void }) {
   const { overview, repoInfo } = brief;
   const flowChart = brief.diagrams?.overview || buildOverviewFlowChart(brief);
   const explanation =
@@ -60,11 +60,13 @@ export function OverviewSection({ brief }: { brief: ProjectBrief }) {
     setActiveFile(ref.filePath);
     setActiveLine(ref.line || null);
     setCodeViewerOpen(true);
-  }, []);
+    onCodePanelToggle?.(true);
+  }, [onCodePanelToggle]);
 
   const handleCloseViewer = useCallback(() => {
     setCodeViewerOpen(false);
-  }, []);
+    onCodePanelToggle?.(false);
+  }, [onCodePanelToggle]);
 
   // Collect all referenced files for the CodeViewer
   const allRefFiles = explanation
@@ -73,7 +75,7 @@ export function OverviewSection({ brief }: { brief: ProjectBrief }) {
   const uniqueFiles = [...new Set([...viewerFiles, ...allRefFiles])];
 
   return (
-    <div className="overview-layout">
+    <div className={`overview-layout ${codeViewerOpen ? "overview-layout-split" : ""}`}>
       <div className={`overview-doc ${codeViewerOpen ? "overview-doc-split" : ""}`}>
         <div className="animate-fade-in">
           {/* Header */}
