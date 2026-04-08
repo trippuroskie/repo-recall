@@ -139,9 +139,22 @@ Output a valid JSON object with this exact structure:
     ]
   },
   "diagrams": {
-    "overview": "graph TD mermaid diagram showing the actual high-level data flow for this project",
+    "overview": "sequenceDiagram showing the complete workflow — how a user action flows through the system from UI through API/services to data stores and back, using actual component/function names from the code",
     "architecture": "graph TD mermaid diagram showing how key modules relate to each other",
     "stack": "graph TD mermaid diagram showing the technology stack layers"
+  },
+  "overviewExplanation": {
+    "introduction": "1-2 sentences introducing how the system works at a high level, matching the diagram above",
+    "steps": [
+      {
+        "title": "Step Title (e.g. 'Benchmark Initiation & Queuing')",
+        "description": "Detailed explanation of this stage of the flow. Reference specific function names, file paths, and line numbers you observed. Write 2-4 sentences explaining what happens, why it matters, and how the components interact. Use the format filePath:lineNumber when referencing code.",
+        "codeRefs": [
+          { "filePath": "src/path/to/file.ts", "line": 42, "label": "functionName" },
+          { "filePath": "src/path/to/other.ts", "line": 100, "label": "otherFunction" }
+        ]
+      }
+    ]
   }
 }
 
@@ -154,14 +167,49 @@ Output a valid JSON object with this exact structure:
 ### Diagram Rules
 - Use actual module names, component names, and service names from the code you explored
 - Show real relationships you observed (imports, API calls, data flow), not assumptions
+- Valid mermaid syntax only
+
+#### Overview Diagram (MUST be a sequenceDiagram)
+- Use "sequenceDiagram" type to show the complete request/data flow through the system
+- Include all major participants as actors: User, UI components, API routes, services, databases, external services
+- Show the primary user flow step by step with actual function/method names where possible
+- Use loops, alt blocks, and notes to show conditional logic and important behavior
+- Include return arrows to show responses flowing back
+- Example structure:
+  sequenceDiagram
+    participant User
+    participant UI as React UI
+    participant API as API Routes
+    participant Service as Core Service
+    participant DB as Database
+    User->>UI: Initiates action
+    UI->>API: POST /api/endpoint
+    API->>Service: processRequest(data)
+    Service->>DB: query(params)
+    DB-->>Service: results
+    Service-->>API: response
+    API-->>UI: JSON response
+    UI-->>User: Updated view
+
+#### Architecture & Stack Diagrams (use graph TD or graph LR)
 - Keep diagrams focused: 8-15 nodes max, prefer clarity over completeness
 - Use subgraphs to group related nodes logically
 - Sanitize node labels: no special characters (){}[]|;#& — use only alphanumeric, spaces, hyphens
 - Wrap all node labels in double quotes inside brackets: N1["Label Here"]
-- Valid mermaid syntax only — each diagram must start with "graph TD" or "graph LR"
-- The overview diagram should show: user -> frontend -> API -> services -> data stores -> external services using real names
 - The architecture diagram should show actual import/dependency relationships between modules
 - The stack diagram should show technology layers with the actual technologies used
+
+### Overview Explanation Rules
+- The overviewExplanation should narrate the flow shown in the sequence diagram — think of it as a guided walkthrough
+- Write 3-6 steps that trace the primary user journey through the entire system
+- Each step should reference real file paths and line numbers you read during exploration
+- Include specific function names, class names, and variable names in descriptions
+- The description should explain WHAT happens and WHY, not just restate the code
+- Each step should have 1-4 codeRefs pointing to the most relevant lines
+- The label in codeRefs should be a recognizable identifier (function name, component name, etc.)
+- Example step descriptions:
+  - "The handleRunBenchmark function in App.tsx:124 creates a queue of all individual runs. It combines selected tasks, models, and iterations into work items..."
+  - "The agent harness contains the core logic: a while loop (harness.ts:54) that continues until the agent provides a final answer. Inside, it calls the LLM service with conversation history and available tools..."
 
 ### Quality Standards
 - Descriptions should be specific and evidence-based, not generic

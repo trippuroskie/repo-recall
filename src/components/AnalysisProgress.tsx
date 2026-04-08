@@ -121,12 +121,33 @@ export function AnalysisProgress({
           }
         }
 
-        // If the stream ended without a complete event, something went wrong
+        // If the stream ended without a complete event, the connection may have
+        // dropped but the server might still be saving the brief. Poll for it.
         if (!receivedComplete) {
+          const repoName = extractRepoName(repoUrl);
+          if (repoName) {
+            setPhase("Connection lost — checking for saved results...");
+            const brief = await pollForBrief(repoName);
+            if (brief) {
+              onComplete(brief);
+              return;
+            }
+          }
           onError("Analysis ended unexpectedly. Please try again.");
         }
       } catch (err) {
         if (controller.signal.aborted) return;
+        // Connection may have died (ECONNRESET, network error) but server
+        // might still finish and save the brief. Poll before giving up.
+        const repoName = extractRepoName(repoUrl);
+        if (repoName) {
+          setPhase("Connection lost — checking for saved results...");
+          const brief = await pollForBrief(repoName);
+          if (brief) {
+            onComplete(brief);
+            return;
+          }
+        }
         onError(err instanceof Error ? err.message : "Analysis failed");
       }
     }
@@ -281,6 +302,38 @@ export function AnalysisProgress({
       </div>
     </div>
   );
+}
+
+function extractRepoName(url: string): string | null {
+  const urlMatch = url.match(
+    /(?:https?:\/\/)?(?:www\.)?github\.com\/([^/]+)\/([^/\s.]+)/
+  );
+  if (urlMatch) return `${urlMatch[1]}/${urlMatch[2].replace(/\.git$/, "")}`;
+  const shortMatch = url.match(/^([^/\s]+)\/([^/\s]+)$/);
+  if (shortMatch) return `${shortMatch[1]}/${shortMatch[2]}`;
+  return null;
+}
+
+async function pollForBrief(
+  repoName: string,
+  maxAttempts = 6,
+  intervalMs = 5000
+): Promise<ProjectBrief | null> {
+  for (let i = 0; i < maxAttempts; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, intervalMs));
+    try {
+      const res = await fetch(
+        `/api/briefs/by-repo?repo=${encodeURIComponent(repoName)}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.found && data.brief) return data.brief;
+      }
+    } catch {
+      // Network error — keep trying
+    }
+  }
+  return null;
 }
 
 function formatAction(action: string, detail: string): string {

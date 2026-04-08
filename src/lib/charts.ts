@@ -20,22 +20,15 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
   // Need enough data to build a meaningful diagram
   if (modules.length === 0 && features.length === 0) return "";
 
-  let chart = "graph TD\n";
-  let nid = 0;
-
-  // User entry point
-  chart += `  USER(["User"])\n`;
-
   // Classify modules into layers
-  const frontend: { name: string; id: string }[] = [];
-  const backend: { name: string; id: string }[] = [];
-  const data: { name: string; id: string }[] = [];
+  const frontend: string[] = [];
+  const backend: string[] = [];
+  const data: string[] = [];
 
   for (const mod of modules) {
     const n = mod.name.toLowerCase();
     const p = mod.purpose.toLowerCase();
     const path = mod.path.toLowerCase();
-    const id = `M${nid++}`;
 
     if (
       n.includes("page") || n.includes("component") || n.includes("hook") ||
@@ -43,98 +36,88 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
       p.includes("ui") || p.includes("frontend") || p.includes("render") ||
       path.includes("components") || path.includes("app/") && path.includes("page")
     ) {
-      frontend.push({ name: mod.name, id });
+      frontend.push(mod.name);
     } else if (
       n.includes("database") || n.includes("schema") || n.includes("migration") ||
       n.includes("store") || n.includes("model") ||
       p.includes("database") || p.includes("storage") || p.includes("persist")
     ) {
-      data.push({ name: mod.name, id });
+      data.push(mod.name);
     } else {
-      backend.push({ name: mod.name, id });
+      backend.push(mod.name);
     }
   }
 
   // If no clear frontend modules, use features as the UI layer
   if (frontend.length === 0 && features.length > 0) {
     for (const feat of features.slice(0, 4)) {
-      frontend.push({ name: feat.name, id: `M${nid++}` });
+      frontend.push(feat.name);
     }
   }
 
-  // Frontend subgraph
+  // Build a sequence diagram showing the flow through the system
+  let chart = "sequenceDiagram\n";
+
+  // Define participants based on what layers exist
+  chart += "    participant User\n";
   if (frontend.length > 0) {
-    chart += `  subgraph UI["Frontend"]\n`;
-    chart += `    direction LR\n`;
-    for (const mod of frontend) {
-      chart += `    ${mod.id}["${sanitize(mod.name)}"]\n`;
-    }
-    chart += `  end\n`;
-    chart += `  USER --> UI\n`;
+    const uiLabel = sanitize(frontend[0]);
+    chart += `    participant UI as ${uiLabel}\n`;
   }
-
-  // API layer
   if (apis.length > 0) {
-    chart += `  subgraph API["API Layer"]\n`;
-    chart += `    direction LR\n`;
-    apis.forEach((api, i) => {
-      const short = api.split("/").slice(-2).join("/");
-      chart += `    A${i}["${sanitize(short)}"]\n`;
-    });
-    chart += `  end\n`;
-    if (frontend.length > 0) {
-      chart += `  UI --> API\n`;
-    } else {
-      chart += `  USER --> API\n`;
-    }
+    chart += "    participant API as API Routes\n";
   }
-
-  // Backend / core logic subgraph
   if (backend.length > 0) {
-    chart += `  subgraph CORE["Core Logic"]\n`;
-    chart += `    direction LR\n`;
-    for (const mod of backend) {
-      chart += `    ${mod.id}["${sanitize(mod.name)}"]\n`;
-    }
-    chart += `  end\n`;
-    if (apis.length > 0) {
-      chart += `  API --> CORE\n`;
-    } else if (frontend.length > 0) {
-      chart += `  UI --> CORE\n`;
-    }
+    const svcLabel = sanitize(backend[0]);
+    chart += `    participant Service as ${svcLabel}\n`;
   }
-
-  // Data layer
   if (data.length > 0) {
-    chart += `  subgraph DATA["Data Layer"]\n`;
-    chart += `    direction LR\n`;
-    for (const mod of data) {
-      chart += `    ${mod.id}["${sanitize(mod.name)}"]\n`;
-    }
-    chart += `  end\n`;
-    if (backend.length > 0) {
-      chart += `  CORE --> DATA\n`;
-    } else if (apis.length > 0) {
-      chart += `  API --> DATA\n`;
-    }
+    const dbLabel = sanitize(data[0]);
+    chart += `    participant DB as ${dbLabel}\n`;
+  }
+  if (integrations.length > 0) {
+    const extLabel = sanitize(integrations[0]);
+    chart += `    participant Ext as ${extLabel}\n`;
   }
 
-  // External services
-  if (integrations.length > 0) {
-    chart += `  subgraph EXT["External Services"]\n`;
-    chart += `    direction LR\n`;
-    integrations.forEach((int, i) => {
-      chart += `    E${i}["${sanitize(int)}"]\n`;
-    });
-    chart += `  end\n`;
-    // Connect to whichever layer makes sense
-    if (backend.length > 0) {
-      chart += `  CORE --> EXT\n`;
-    } else if (apis.length > 0) {
-      chart += `  API --> EXT\n`;
-    } else {
-      chart += `  UI --> EXT\n`;
-    }
+  // Build the flow based on available layers
+  const layers: string[] = [];
+  if (frontend.length > 0) layers.push("UI");
+  if (apis.length > 0) layers.push("API");
+  if (backend.length > 0) layers.push("Service");
+  if (data.length > 0) layers.push("DB");
+
+  // Forward flow: User -> each layer
+  let prev = "User";
+  for (const layer of layers) {
+    chart += `    ${prev}->>${layer}: Request\n`;
+    prev = layer;
+  }
+
+  // External service call if present
+  if (integrations.length > 0 && layers.length > 0) {
+    const caller = layers[layers.length - 1];
+    chart += `    ${caller}->>Ext: External call\n`;
+    chart += `    Ext-->>${caller}: Response\n`;
+  }
+
+  // Return flow
+  const reversedLayers = [...layers].reverse();
+  for (let i = 0; i < reversedLayers.length - 1; i++) {
+    chart += `    ${reversedLayers[i]}-->>${reversedLayers[i + 1]}: Response\n`;
+  }
+  if (layers.length > 0) {
+    chart += `    ${reversedLayers[reversedLayers.length - 1]}-->>User: Updated view\n`;
+  }
+
+  // Add notes for additional modules in each layer
+  if (frontend.length > 1) {
+    const others = frontend.slice(1, 4).map(sanitize).join(", ");
+    chart += `    Note over UI: Also: ${others}\n`;
+  }
+  if (backend.length > 1) {
+    const others = backend.slice(1, 4).map(sanitize).join(", ");
+    chart += `    Note over Service: Also: ${others}\n`;
   }
 
   return chart;
@@ -408,4 +391,127 @@ export function buildEntrypointsChart(brief: ProjectBrief): string {
   }
 
   return chart;
+}
+
+export function buildFallbackExplanation(
+  brief: ProjectBrief
+): ProjectBrief["overviewExplanation"] | null {
+  const modules = brief.architecture.keyModules;
+  const apis = brief.architecture.apis;
+  const integrations = brief.architecture.integrations;
+  const features = brief.features;
+
+  if (modules.length === 0 && features.length === 0) return null;
+
+  const steps: NonNullable<ProjectBrief["overviewExplanation"]>["steps"] = [];
+
+  // Classify modules for step generation
+  const frontend = modules.filter((m) => {
+    const n = m.name.toLowerCase();
+    const p = m.purpose.toLowerCase();
+    return (
+      n.includes("page") || n.includes("component") || n.includes("hook") ||
+      n.includes("layout") || n.includes("view") ||
+      p.includes("ui") || p.includes("frontend") || p.includes("render")
+    );
+  });
+
+  const backend = modules.filter((m) => {
+    const n = m.name.toLowerCase();
+    const p = m.purpose.toLowerCase();
+    return !(
+      n.includes("page") || n.includes("component") || n.includes("hook") ||
+      n.includes("layout") || n.includes("view") ||
+      p.includes("ui") || p.includes("frontend") || p.includes("render") ||
+      n.includes("database") || n.includes("schema") || n.includes("migration") ||
+      n.includes("store") || n.includes("model") ||
+      p.includes("database") || p.includes("storage") || p.includes("persist")
+    );
+  });
+
+  const data = modules.filter((m) => {
+    const n = m.name.toLowerCase();
+    const p = m.purpose.toLowerCase();
+    return (
+      n.includes("database") || n.includes("schema") || n.includes("migration") ||
+      n.includes("store") || n.includes("model") ||
+      p.includes("database") || p.includes("storage") || p.includes("persist")
+    );
+  });
+
+  // Step 1: Frontend / Entry
+  if (frontend.length > 0) {
+    steps.push({
+      title: "User Interface Layer",
+      description: `Users interact with the application through ${frontend.length} frontend module${frontend.length > 1 ? "s" : ""}. ${frontend[0].name} ${frontend[0].purpose ? `handles ${frontend[0].purpose.toLowerCase()}` : "serves as a primary entry point"}.${frontend.length > 1 ? ` Other UI modules include ${frontend.slice(1, 3).map((m) => m.name).join(", ")}.` : ""}`,
+      codeRefs: frontend.slice(0, 3).map((m) => ({
+        filePath: m.path,
+        label: m.name,
+      })),
+    });
+  } else if (features.length > 0) {
+    steps.push({
+      title: "User-Facing Features",
+      description: `The application exposes ${features.length} key feature${features.length > 1 ? "s" : ""}. ${features[0].name}: ${features[0].description}`,
+      codeRefs: features
+        .slice(0, 3)
+        .filter((f) => f.files[0])
+        .map((f) => ({ filePath: f.files[0], label: f.name })),
+    });
+  }
+
+  // Step 2: API Layer
+  if (apis.length > 0) {
+    steps.push({
+      title: "API Layer",
+      description: `The application exposes ${apis.length} API endpoint${apis.length > 1 ? "s" : ""} that handle incoming requests. Key routes include ${apis.slice(0, 3).join(", ")}. These endpoints receive requests from the frontend, validate input, and route to the appropriate service logic.`,
+      codeRefs: apis.slice(0, 3).map((api) => {
+        const filePath = api.includes(".")
+          ? api
+          : `src/app/${api.replace(/^\//, "")}/route.ts`;
+        return { filePath, label: api.split("/").slice(-2).join("/") };
+      }),
+    });
+  }
+
+  // Step 3: Core Logic
+  if (backend.length > 0) {
+    steps.push({
+      title: "Core Logic & Services",
+      description: `The backend processing is handled by ${backend.length} core module${backend.length > 1 ? "s" : ""}. ${backend[0].name} ${backend[0].purpose ? backend[0].purpose.toLowerCase() : "contains the primary business logic"}.${backend.length > 1 ? ` Supporting modules include ${backend.slice(1, 3).map((m) => m.name).join(" and ")}.` : ""}`,
+      codeRefs: backend.slice(0, 3).map((m) => ({
+        filePath: m.path,
+        label: m.name,
+      })),
+    });
+  }
+
+  // Step 4: Data Layer
+  if (data.length > 0) {
+    steps.push({
+      title: "Data & Persistence",
+      description: `Data is managed through ${data.length} module${data.length > 1 ? "s" : ""}. ${data[0].name} ${data[0].purpose ? data[0].purpose.toLowerCase() : "handles data persistence and retrieval"}.${data.length > 1 ? ` Also includes ${data.slice(1, 3).map((m) => m.name).join(", ")}.` : ""}`,
+      codeRefs: data.slice(0, 3).map((m) => ({
+        filePath: m.path,
+        label: m.name,
+      })),
+    });
+  }
+
+  // Step 5: External Services
+  if (integrations.length > 0) {
+    steps.push({
+      title: "External Services & Integrations",
+      description: `The application integrates with ${integrations.length} external service${integrations.length > 1 ? "s" : ""}: ${integrations.slice(0, 4).join(", ")}. These integrations extend the application's capabilities beyond its own codebase.`,
+      codeRefs: [],
+    });
+  }
+
+  if (steps.length === 0) return null;
+
+  const stackStr = brief.architecture.stack.slice(0, 3).join(", ");
+  return {
+    introduction: `${brief.repoInfo.name} is a ${stackStr || brief.repoInfo.language || "software"} application with ${modules.length} key modules. Here's how the system works from user interaction through to data persistence.`,
+    steps,
+  };
 }

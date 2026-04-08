@@ -162,6 +162,16 @@ export interface ProjectBrief {
     stack?: string;
   };
 
+  // Structured flow explanation for the overview section
+  overviewExplanation?: {
+    introduction: string;
+    steps: {
+      title: string;
+      description: string;
+      codeRefs: { filePath: string; line?: number; label: string }[];
+    }[];
+  };
+
   // Enriched timeline data for visualizations
   timelineData?: TimelineData;
 }

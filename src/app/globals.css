@@ -235,6 +235,99 @@ body {
   color: var(--foreground-secondary);
 }
 
+/* ─── Overview Code Panel (fixed slide-in) ─── */
+.overview-code-panel-fixed {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 50vw;
+  height: 100vh;
+  border-left: 1px solid var(--border);
+  background: var(--background, #fff);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  z-index: 40;
+  animation: slideInRight 0.2s ease-out;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.overview-explanation {
+  margin-top: 16px;
+}
+
+.overview-step {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+
+.overview-step:hover {
+  border-color: var(--border-hover);
+}
+
+.overview-step-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 10px 14px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  gap: 10px;
+}
+
+.overview-step-header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.overview-step-number {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--accent-light);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overview-step-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.overview-step-body {
+  padding: 0 14px 12px 46px;
+}
+
+.overview-step-description {
+  font-size: 13px;
+  color: var(--foreground-secondary);
+  line-height: 1.7;
+  margin: 0 0 8px;
+}
+
+.overview-step-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
 /* ─── Codemap Layout ─── */
 .codemap-layout {
   display: flex;

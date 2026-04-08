@@ -46,6 +46,17 @@ export function MermaidChart({
               curve: "basis",
               padding: 12,
             },
+            sequence: {
+              actorMargin: 50,
+              boxMargin: 10,
+              boxTextMargin: 5,
+              noteMargin: 10,
+              messageMargin: 35,
+              mirrorActors: true,
+              showSequenceNumbers: false,
+              useMaxWidth: true,
+              wrap: true,
+            },
             pie: {
               textPosition: 0.75,
             },

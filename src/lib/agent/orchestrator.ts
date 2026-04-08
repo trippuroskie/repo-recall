@@ -472,12 +472,41 @@ function buildBriefFromSynthesis(
   if (diagramsRaw) {
     const diagrams: ProjectBrief["diagrams"] = {};
     const isValidMermaid = (v: unknown): v is string =>
-      typeof v === "string" && /^\s*graph\s+(TD|LR|TB|BT|RL)\b/i.test(v);
+      typeof v === "string" && /^\s*(graph\s+(TD|LR|TB|BT|RL)\b|sequenceDiagram|flowchart\s+(TD|LR|TB|BT|RL)\b|gantt|pie|classDiagram|stateDiagram)/i.test(v);
     if (isValidMermaid(diagramsRaw.overview)) diagrams.overview = diagramsRaw.overview.trim();
     if (isValidMermaid(diagramsRaw.architecture)) diagrams.architecture = diagramsRaw.architecture.trim();
     if (isValidMermaid(diagramsRaw.stack)) diagrams.stack = diagramsRaw.stack.trim();
     if (Object.keys(diagrams).length > 0) {
       brief.diagrams = diagrams;
+    }
+  }
+
+  // Parse overview explanation if present
+  const explanationRaw = data.overviewExplanation as Record<string, unknown> | undefined;
+  if (explanationRaw) {
+    try {
+      const intro = (explanationRaw.introduction as string) || "";
+      const stepsRaw = explanationRaw.steps as Record<string, unknown>[] | undefined;
+      if (intro && Array.isArray(stepsRaw) && stepsRaw.length > 0) {
+        brief.overviewExplanation = {
+          introduction: intro,
+          steps: stepsRaw
+            .filter((s) => s.title && s.description)
+            .map((s) => ({
+              title: s.title as string,
+              description: s.description as string,
+              codeRefs: Array.isArray(s.codeRefs)
+                ? (s.codeRefs as Record<string, unknown>[]).map((r) => ({
+                    filePath: (r.filePath as string) || "",
+                    line: typeof r.line === "number" ? r.line : undefined,
+                    label: (r.label as string) || (r.filePath as string) || "",
+                  }))
+                : [],
+            })),
+        };
+      }
+    } catch {
+      // Skip explanation if it doesn't parse
     }
   }
 

@@ -100,25 +100,43 @@ export async function POST(request: NextRequest) {
 
     // Set up SSE streaming
     const encoder = new TextEncoder();
+    let streamDead = false;
+
     const stream = new ReadableStream({
       async start(controller) {
-        // Keepalive heartbeat to prevent Vercel/CDN/browser from closing idle connections
+        // Keepalive heartbeat — 5s interval to prevent Vercel/CDN/browser/proxy idle timeouts
         const keepalive = setInterval(() => {
           try {
-            controller.enqueue(encoder.encode(`: keepalive\n\n`));
+            if (!streamDead) {
+              controller.enqueue(encoder.encode(`: keepalive\n\n`));
+            }
           } catch {
+            streamDead = true;
             clearInterval(keepalive);
           }
-        }, 15_000);
+        }, 5_000);
 
         const send = (event: ProgressEvent) => {
+          if (streamDead) return;
           try {
             controller.enqueue(
               encoder.encode(`data: ${JSON.stringify(event)}\n\n`)
             );
           } catch {
-            // Controller may be closed
+            streamDead = true;
           }
+        };
+
+        const closeStream = () => {
+          try {
+            if (!streamDead) {
+              controller.enqueue(encoder.encode("data: [DONE]\n\n"));
+              controller.close();
+            }
+          } catch {
+            // Already closed
+          }
+          streamDead = true;
         };
 
         try {
@@ -158,23 +176,31 @@ export async function POST(request: NextRequest) {
             brief = generateBrief(repoInfo, files, prs, commits, packageJson, readme);
           }
 
-          // Save to database
+          // Save to database FIRST — this is the critical step.
+          // Even if the SSE connection has died, the brief is persisted
+          // and the client can poll for it.
           await saveBrief(brief, userId);
+          console.log(`[analyze] Brief saved for ${owner}/${repo} (stream alive: ${!streamDead})`);
 
-          send({ type: "complete", brief });
+          // Try to deliver the result over SSE — may fail if client disconnected
           clearInterval(keepalive);
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
+          send({ type: "complete", brief });
+          closeStream();
         } catch (innerError) {
           clearInterval(keepalive);
           // Roll back usage reservation on failure
           if (usageId) await rollbackUsage(usageId);
           const message =
             innerError instanceof Error ? innerError.message : "Analysis failed";
+          console.error(`[analyze] Error for ${owner}/${repo}:`, message);
           send({ type: "error", message });
-          controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-          controller.close();
+          closeStream();
         }
+      },
+      cancel() {
+        // Called when the client disconnects — mark stream as dead
+        // so we don't try to enqueue into a closed controller
+        streamDead = true;
       },
     });
 
