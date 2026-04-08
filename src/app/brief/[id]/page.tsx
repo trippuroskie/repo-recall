@@ -148,6 +148,7 @@ function BriefPage() {
   }
 
   const isCodemap = activeSection === "codemap";
+  const isFullWidth = activeSection === "codemap" || activeSection === "overview";
 
   const sectionComponents: Record<string, React.ReactNode> = {
     overview: <OverviewSection brief={brief} />,
@@ -209,20 +210,20 @@ function BriefPage() {
           ref={contentRef}
           style={{
             flex: 1,
-            overflowY: isCodemap ? "hidden" : "auto",
+            overflowY: isFullWidth ? "hidden" : "auto",
             display: "flex",
-            justifyContent: isCodemap ? "stretch" : "center",
+            justifyContent: isFullWidth ? "stretch" : "center",
           }}
         >
           <div
             style={{
               width: "100%",
-              maxWidth: isCodemap ? "none" : 760,
-              padding: isCodemap ? "0" : "32px 48px 48px",
+              maxWidth: isFullWidth ? "none" : 760,
+              padding: isFullWidth ? "0" : "32px 48px 48px",
           }}
         >
-          {/* Breadcrumb (hidden in codemap mode) */}
-          {!isCodemap && <div
+          {/* Breadcrumb (hidden in full-width modes) */}
+          {!isFullWidth && <div
             style={{
               display: "flex",
               alignItems: "center",
@@ -282,7 +283,7 @@ function BriefPage() {
           </div>}
 
           {/* Mobile section nav */}
-          {!isCodemap && (
+          {!isFullWidth && (
             <div className="flex gap-2 overflow-x-auto pb-4 mb-6 md:hidden">
               {Object.entries(sectionLabels).map(([id, label]) => (
                 <button
@@ -301,10 +302,10 @@ function BriefPage() {
           )}
 
           {/* Section content */}
-          <div className={isCodemap ? "" : "max-w-3xl"} style={isCodemap ? { height: "100%" } : undefined}>
+          <div className={isFullWidth ? "" : "max-w-3xl"} style={isFullWidth ? { height: "100%" } : undefined}>
             {sectionComponents[activeSection]}
             {/* Spacer so content can scroll above the floating chat bar */}
-            {!isCodemap && <div style={{ height: 160 }} aria-hidden />}
+            {!isFullWidth && <div style={{ height: 160 }} aria-hidden />}
           </div>
         </div>
         </div>
