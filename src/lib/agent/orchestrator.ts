@@ -266,6 +266,43 @@ async function synthesize(input: SynthesisInput): Promise<ProjectBrief> {
     ? `\n\nFiles explored (${readFiles.length}):\n${readFiles.map((f) => `- ${f}`).join("\n")}`
     : "";
 
+  // Phase 3: Include key file contents for richer synthesis context
+  const keyReads = toolResults
+    .filter((r) => (r.tool === "readFile" || r.tool === "readFileLines") && !r.error && r.result.length > 0)
+    .sort((a, b) => {
+      const priority = (path: string) => {
+        if (path.includes("package.json") || path.includes("tsconfig")) return 0;
+        if (/app\/.*page\.(tsx?|jsx?)$/.test(path)) return 1;
+        if (/app\/.*layout\.(tsx?|jsx?)$/.test(path)) return 1;
+        if (/api\/.*route\.(tsx?|jsx?)$/.test(path)) return 2;
+        if (path.includes("/lib/") || path.includes("/utils/")) return 3;
+        return 4;
+      };
+      return priority(a.params.path as string) - priority(b.params.path as string);
+    });
+
+  let fileBudget = 30_000;
+  const includedFiles: string[] = [];
+  for (const r of keyReads) {
+    const content = r.result;
+    if (content.length <= fileBudget) {
+      includedFiles.push(`### ${r.params.path}\n\`\`\`\n${content}\n\`\`\``);
+      fileBudget -= content.length;
+    }
+    if (fileBudget <= 0) break;
+  }
+  const keyFilesSection = includedFiles.length > 0
+    ? `\n\n## Key File Contents\n\n${includedFiles.join("\n\n")}`
+    : "";
+
+  // Include search results summary
+  const searches = toolResults
+    .filter((r) => r.tool === "searchCode" && !r.error)
+    .map((r) => `- Search: "${r.params.query}" → ${r.result.split("\n")[0]}`);
+  const searchSection = searches.length > 0
+    ? `\n\n## Search Findings\n\n${searches.join("\n")}`
+    : "";
+
   const synthMessages = [
     { role: "system" as const, content: SYNTHESIS_PROMPT },
     {
@@ -278,6 +315,8 @@ ${repoInfo.topics.length > 0 ? `Topics: ${repoInfo.topics.join(", ")}` : ""}
 
 ${explorationSummary}
 ${fileListStr}
+${keyFilesSection}
+${searchSection}
 
 Produce the structured JSON analysis now.`,
     },
