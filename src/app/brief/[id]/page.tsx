@@ -41,6 +41,7 @@ function BriefPage() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [reanalyzing, setReanalyzing] = useState(false);
   const [chatSessionId, setChatSessionId] = useState<string | undefined>(undefined);
+  const [overviewCodeOpen, setOverviewCodeOpen] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -148,10 +149,11 @@ function BriefPage() {
   }
 
   const isCodemap = activeSection === "codemap";
-  const isFullWidth = activeSection === "codemap" || activeSection === "overview";
+  const isOverviewSplit = activeSection === "overview" && overviewCodeOpen;
+  const isFullWidth = isCodemap || isOverviewSplit;
 
   const sectionComponents: Record<string, React.ReactNode> = {
-    overview: <OverviewSection brief={brief} />,
+    overview: <OverviewSection brief={brief} onCodePanelToggle={setOverviewCodeOpen} />,
     codemap: <CodemapSection brief={brief} />,
     architecture: <ArchitectureSection brief={brief} />,
     features: <FeaturesSection brief={brief} />,
