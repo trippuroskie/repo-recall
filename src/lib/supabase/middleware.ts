@@ -35,22 +35,31 @@ export async function updateSession(request: NextRequest) {
     request.nextUrl.pathname.startsWith(path)
   );
 
+  // Public paths accessible without auth
+  const publicPaths = ["/explore"];
+  const isPublicRoute = publicPaths.some((path) =>
+    request.nextUrl.pathname.startsWith(path)
+  );
+
   // Protected API routes
   const isProtectedApi =
     request.nextUrl.pathname.startsWith("/api/") &&
     !request.nextUrl.pathname.startsWith("/api/auth/") &&
     !request.nextUrl.pathname.startsWith("/api/webhooks/");
 
+  // Public API routes accessible without auth
+  const isPublicApi = request.nextUrl.pathname.startsWith("/api/explore");
+
   const devBypass = process.env.DEV_BYPASS_AUTH === "true" && process.env.NODE_ENV === "development";
 
-  if (!user && !devBypass && isProtectedRoute) {
+  if (!user && !devBypass && isProtectedRoute && !isPublicRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", request.nextUrl.pathname);
     return NextResponse.redirect(url);
   }
 
-  if (!user && !devBypass && isProtectedApi) {
+  if (!user && !devBypass && isProtectedApi && !isPublicApi) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
