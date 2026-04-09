@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, Fragment } from "react";
+import { useState, useCallback, useMemo, Fragment } from "react";
 import type { ProjectBrief } from "@/lib/types";
 import { MermaidChart } from "@/components/MermaidChart";
 import { CodeViewer } from "@/components/CodeViewer";
@@ -19,6 +19,10 @@ import {
   Tag,
   ChevronDown,
   ChevronRight,
+  PlayCircle,
+  Layers,
+  Plug,
+  Clock,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -34,6 +38,13 @@ export function OverviewSection({ brief, onCodePanelToggle }: { brief: ProjectBr
   const explanation =
     brief.overviewExplanation || buildFallbackExplanation(brief);
   const stats = overview.stats;
+
+  const displayedEntrypoints = useMemo(() => {
+    if (!brief.entrypoints?.length) return [];
+    const high = brief.entrypoints.filter((e) => e.priority === "high").slice(0, 3);
+    const others = brief.entrypoints.filter((e) => e.priority !== "high").slice(0, Math.max(0, 3 - high.length));
+    return [...high, ...others];
+  }, [brief.entrypoints]);
 
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(
     () => new Set(explanation ? explanation.steps.map((_, i) => i) : [])
@@ -261,6 +272,129 @@ export function OverviewSection({ brief, onCodePanelToggle }: { brief: ProjectBr
                       {i + 1}
                     </span>
                     {flow}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Where to Start — top entrypoints */}
+          {displayedEntrypoints.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
+                <PlayCircle size={14} />
+                Where to Start
+              </h3>
+              <div className="space-y-2">
+                {displayedEntrypoints.map((ep, i) => (
+                    <button
+                      key={i}
+                      onClick={() =>
+                        handleCodeRef({
+                          filePath: ep.path,
+                          label: ep.path.split("/").pop() || ep.path,
+                        })
+                      }
+                      className="w-full text-left border border-border rounded-lg px-4 py-3 hover:border-border-hover transition-colors group"
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-sm font-medium text-accent group-hover:underline font-mono">
+                          {ep.path}
+                        </span>
+                        <span
+                          className={`text-[10px] font-medium uppercase px-1.5 py-0.5 rounded ${
+                            ep.priority === "high"
+                              ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300"
+                              : ep.priority === "medium"
+                              ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300"
+                              : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
+                          }`}
+                        >
+                          {ep.priority}
+                        </span>
+                        <span className="text-[10px] text-foreground-secondary bg-surface px-1.5 py-0.5 rounded">
+                          {ep.type}
+                        </span>
+                      </div>
+                      <p className="text-xs text-foreground-secondary leading-relaxed">
+                        {ep.reason}
+                      </p>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
+
+          {/* Tech Stack & Integrations */}
+          {(brief.architecture.stack.length > 0 ||
+            brief.architecture.integrations.length > 0) && (
+            <div className="mb-8 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Tech Stack */}
+              {brief.architecture.stack.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Layers size={14} />
+                    Tech Stack
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {brief.architecture.stack.map((tech, i) => (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 bg-surface border border-border rounded-md text-xs text-foreground font-medium"
+                      >
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Integrations */}
+              {brief.architecture.integrations.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
+                    <Plug size={14} />
+                    Integrations
+                  </h3>
+                  <div className="flex flex-wrap gap-1.5">
+                    {brief.architecture.integrations.map((int, i) => (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 bg-accent-light text-accent rounded-md text-xs font-medium"
+                      >
+                        {int}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Recent Milestones */}
+          {brief.timeline && brief.timeline.length > 0 && (
+            <div className="mb-8">
+              <h3 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
+                <Clock size={14} />
+                Recent Milestones
+              </h3>
+              <div className="space-y-2">
+                {brief.timeline.slice(0, 3).map((milestone, i) => (
+                  <div
+                    key={i}
+                    className="flex items-start gap-3 border border-border rounded-lg px-4 py-3"
+                  >
+                    <span className="text-xs text-foreground-secondary whitespace-nowrap mt-0.5 font-mono">
+                      {milestone.date}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {milestone.title}
+                      </p>
+                      <p className="text-xs text-foreground-secondary leading-relaxed mt-0.5">
+                        {milestone.description}
+                      </p>
+                    </div>
                   </div>
                 ))}
               </div>
