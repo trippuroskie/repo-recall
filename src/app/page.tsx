@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Logo } from "@/components/Logo";
 import { AnalyzeForm } from "@/components/AnalyzeForm";
 import {
@@ -9,9 +10,12 @@ import {
   GitPullRequest,
   Compass,
   ArrowRight,
+  Star,
+  Code,
 } from "lucide-react";
 import Link from "next/link";
 import { UserMenu } from "@/components/UserMenu";
+import type { ProjectBrief } from "@/lib/types";
 
 const features = [
   {
@@ -47,6 +51,15 @@ const features = [
 ];
 
 export default function HomePage() {
+  const [featuredBriefs, setFeaturedBriefs] = useState<ProjectBrief[]>([]);
+
+  useEffect(() => {
+    fetch("/api/explore?featured=true&limit=6")
+      .then((res) => (res.ok ? res.json() : { briefs: [] }))
+      .then((data) => setFeaturedBriefs(data.briefs || []))
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Nav */}
@@ -117,6 +130,81 @@ export default function HomePage() {
             })}
           </div>
         </section>
+
+        {/* Popular Repos */}
+        {featuredBriefs.length > 0 && (
+          <>
+            <div className="border-t border-border" />
+            <section className="max-w-5xl mx-auto px-6 py-16">
+              <div className="flex items-center justify-between mb-8">
+                <h2 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider">
+                  Popular Repos
+                </h2>
+                <Link
+                  href="/explore"
+                  className="inline-flex items-center gap-1 text-sm text-accent hover:text-accent-hover transition-colors"
+                >
+                  View all
+                  <ArrowRight size={14} />
+                </Link>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {featuredBriefs.map((brief) => {
+                  const { repoInfo, overview } = brief;
+                  const desc =
+                    repoInfo.description ||
+                    overview.summary?.slice(0, 120) ||
+                    "No description";
+                  const truncDesc =
+                    desc.length > 120 ? desc.slice(0, 117) + "..." : desc;
+                  return (
+                    <Link
+                      key={brief.id}
+                      href={`/explore/${repoInfo.owner}/${repoInfo.name}`}
+                      className="group block border border-border rounded-xl p-5 hover:border-border-hover hover:bg-surface-hover transition-all"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-foreground truncate group-hover:text-accent transition-colors">
+                            {repoInfo.name}
+                          </h3>
+                          <p className="text-xs text-foreground-secondary">
+                            {repoInfo.owner}
+                          </p>
+                        </div>
+                        <ArrowRight
+                          size={14}
+                          className="text-foreground-secondary/40 group-hover:text-accent transition-colors mt-0.5 shrink-0"
+                        />
+                      </div>
+                      <p className="text-xs text-foreground-secondary leading-relaxed mb-3">
+                        {truncDesc}
+                      </p>
+                      <div className="flex items-center gap-3 text-xs text-foreground-secondary/70">
+                        {repoInfo.stars > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Star size={12} />
+                            {repoInfo.stars >= 1000
+                              ? `${(repoInfo.stars / 1000).toFixed(
+                                  repoInfo.stars >= 10000 ? 0 : 1
+                                )}k`
+                              : repoInfo.stars}
+                          </span>
+                        )}
+                        {repoInfo.language && (
+                          <span className="flex items-center gap-1">
+                            <Code size={12} />
+                            {repoInfo.language}
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </section>
+          </>
+        )}
 
         {/* Divider */}
         <div className="border-t border-border" />
