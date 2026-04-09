@@ -165,9 +165,13 @@ Output a valid JSON object with this exact structure:
 - The snippet should be a brief (1-2 line) excerpt of the key code at that location
 
 ### Diagram Rules
+- Return ONLY raw mermaid syntax for each diagram value. Do NOT wrap in markdown code fences (no \`\`\`mermaid). Do NOT add explanatory text before or after the diagram.
+- The first line of each diagram value MUST be the diagram type keyword (e.g. "sequenceDiagram", "graph TD")
 - Use actual module names, component names, and service names from the code you explored
 - Show real relationships you observed (imports, API calls, data flow), not assumptions
-- Valid mermaid syntax only
+- Valid mermaid syntax only — test that every opened block (loop, alt, opt, par) has a matching "end"
+- WRONG: "Here is the diagram:\nsequenceDiagram\n..." — do NOT include any prose
+- RIGHT: "sequenceDiagram\n    participant User\n..."
 
 #### Overview Diagram (MUST be a sequenceDiagram)
 - Use "sequenceDiagram" type to show the complete request/data flow through the system
@@ -175,6 +179,8 @@ Output a valid JSON object with this exact structure:
 - Show the primary user flow step by step with actual function/method names where possible
 - Use loops, alt blocks, and notes to show conditional logic and important behavior
 - Include return arrows to show responses flowing back
+- Sanitize ALL participant aliases and message labels: no special characters (){}[]|;#& — use only alphanumeric, spaces, hyphens, slashes, and dots
+- Keep participant aliases short (under 30 chars)
 - Example structure:
   sequenceDiagram
     participant User

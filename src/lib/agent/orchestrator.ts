@@ -471,11 +471,34 @@ function buildBriefFromSynthesis(
   const diagramsRaw = data.diagrams as Record<string, string> | undefined;
   if (diagramsRaw) {
     const diagrams: ProjectBrief["diagrams"] = {};
+    const mermaidKeywordRe = /^\s*(graph\s+(TD|LR|TB|BT|RL)\b|sequenceDiagram|flowchart\s+(TD|LR|TB|BT|RL)\b|gantt|pie|classDiagram|stateDiagram(-v2)?)/i;
     const isValidMermaid = (v: unknown): v is string =>
-      typeof v === "string" && /^\s*(graph\s+(TD|LR|TB|BT|RL)\b|sequenceDiagram|flowchart\s+(TD|LR|TB|BT|RL)\b|gantt|pie|classDiagram|stateDiagram)/i.test(v);
-    if (isValidMermaid(diagramsRaw.overview)) diagrams.overview = diagramsRaw.overview.trim();
-    if (isValidMermaid(diagramsRaw.architecture)) diagrams.architecture = diagramsRaw.architecture.trim();
-    if (isValidMermaid(diagramsRaw.stack)) diagrams.stack = diagramsRaw.stack.trim();
+      typeof v === "string" && mermaidKeywordRe.test(v);
+
+    // Strip markdown fences and leading prose that LLMs often add
+    const cleanMermaid = (raw: unknown): string | null => {
+      if (typeof raw !== "string" || !raw.trim()) return null;
+      let cleaned = raw;
+      // Remove ```mermaid ... ``` fences
+      cleaned = cleaned.replace(/^```(?:mermaid)?\s*\n?/i, "").replace(/\n?```\s*$/, "");
+      // Remove any leading prose before the first mermaid keyword
+      const keywordMatch = cleaned.match(mermaidKeywordRe);
+      if (keywordMatch && keywordMatch.index !== undefined && keywordMatch.index > 0) {
+        cleaned = cleaned.slice(keywordMatch.index);
+      }
+      cleaned = cleaned.trim();
+      return cleaned || null;
+    };
+
+    for (const key of ["overview", "architecture", "stack"] as const) {
+      const cleaned = cleanMermaid(diagramsRaw[key]);
+      if (cleaned && isValidMermaid(cleaned)) {
+        diagrams[key] = cleaned;
+      } else if (diagramsRaw[key]) {
+        console.warn(`[orchestrator] Diagram "${key}" failed validation. Raw (first 200 chars):`, String(diagramsRaw[key]).slice(0, 200));
+      }
+    }
+
     if (Object.keys(diagrams).length > 0) {
       brief.diagrams = diagrams;
     }

@@ -16,14 +16,15 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
   const apis = brief.architecture.apis.slice(0, 6);
   const integrations = brief.architecture.integrations.slice(0, 6);
   const features = brief.features.slice(0, 6);
+  const majorFlows = brief.overview.majorFlows || [];
 
   // Need enough data to build a meaningful diagram
   if (modules.length === 0 && features.length === 0) return "";
 
-  // Classify modules into layers
-  const frontend: string[] = [];
-  const backend: string[] = [];
-  const data: string[] = [];
+  // Classify modules into layers, keeping full module info for richer labels
+  const frontend: { name: string; purpose: string }[] = [];
+  const backend: { name: string; purpose: string }[] = [];
+  const dataLayer: { name: string; purpose: string }[] = [];
 
   for (const mod of modules) {
     const n = mod.name.toLowerCase();
@@ -34,45 +35,52 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
       n.includes("page") || n.includes("component") || n.includes("hook") ||
       n.includes("layout") || n.includes("view") ||
       p.includes("ui") || p.includes("frontend") || p.includes("render") ||
-      path.includes("components") || path.includes("app/") && path.includes("page")
+      path.includes("components") || (path.includes("app/") && path.includes("page"))
     ) {
-      frontend.push(mod.name);
+      frontend.push(mod);
     } else if (
       n.includes("database") || n.includes("schema") || n.includes("migration") ||
       n.includes("store") || n.includes("model") ||
       p.includes("database") || p.includes("storage") || p.includes("persist")
     ) {
-      data.push(mod.name);
+      dataLayer.push(mod);
     } else {
-      backend.push(mod.name);
+      backend.push(mod);
     }
   }
 
   // If no clear frontend modules, use features as the UI layer
   if (frontend.length === 0 && features.length > 0) {
     for (const feat of features.slice(0, 4)) {
-      frontend.push(feat.name);
+      frontend.push({ name: feat.name, purpose: feat.description });
     }
   }
+
+  // Derive contextual labels from the brief data
+  const primaryFlow = majorFlows.length > 0 ? sanitize(majorFlows[0]) : null;
+  const firstApi = apis.length > 0 ? sanitize(apis[0]) : null;
 
   // Build a sequence diagram showing the flow through the system
   let chart = "sequenceDiagram\n";
 
-  // Define participants based on what layers exist
+  // Define participants with purpose-aware aliases
   chart += "    participant User\n";
   if (frontend.length > 0) {
-    const uiLabel = sanitize(frontend[0]);
+    const uiLabel = sanitize(frontend[0].name);
     chart += `    participant UI as ${uiLabel}\n`;
   }
   if (apis.length > 0) {
     chart += "    participant API as API Routes\n";
   }
   if (backend.length > 0) {
-    const svcLabel = sanitize(backend[0]);
-    chart += `    participant Service as ${svcLabel}\n`;
+    const svc = backend[0];
+    const svcAlias = svc.purpose
+      ? `${sanitize(svc.name)} - ${sanitize(svc.purpose).slice(0, 30)}`
+      : sanitize(svc.name);
+    chart += `    participant Service as ${svcAlias}\n`;
   }
-  if (data.length > 0) {
-    const dbLabel = sanitize(data[0]);
+  if (dataLayer.length > 0) {
+    const dbLabel = sanitize(dataLayer[0].name);
     chart += `    participant DB as ${dbLabel}\n`;
   }
   if (integrations.length > 0) {
@@ -80,31 +88,49 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
     chart += `    participant Ext as ${extLabel}\n`;
   }
 
+  // Use the primary flow name as the scenario title
+  if (primaryFlow) {
+    chart += `    Note over User: ${primaryFlow}\n`;
+  }
+
   // Build the flow based on available layers
   const layers: string[] = [];
   if (frontend.length > 0) layers.push("UI");
   if (apis.length > 0) layers.push("API");
   if (backend.length > 0) layers.push("Service");
-  if (data.length > 0) layers.push("DB");
+  if (dataLayer.length > 0) layers.push("DB");
 
-  // Forward flow: User -> each layer
+  // Forward flow with contextual labels
+  const forwardLabels: Record<string, string> = {
+    "User->UI": primaryFlow ? `Initiates ${primaryFlow.slice(0, 40)}` : "User action",
+    "UI->API": firstApi || "API request",
+    "API->Service": backend.length > 0 ? sanitize(backend[0].name) : "Process request",
+    "Service->DB": "Query / persist data",
+  };
+
   let prev = "User";
   for (const layer of layers) {
-    chart += `    ${prev}->>${layer}: Request\n`;
+    const label = forwardLabels[`${prev}->${layer}`] || "Request";
+    chart += `    ${prev}->>${layer}: ${label}\n`;
     prev = layer;
   }
 
-  // External service call if present
+  // External service calls with opt block
   if (integrations.length > 0 && layers.length > 0) {
     const caller = layers[layers.length - 1];
-    chart += `    ${caller}->>Ext: External call\n`;
-    chart += `    Ext-->>${caller}: Response\n`;
+    chart += `    opt External Integration\n`;
+    chart += `        ${caller}->>Ext: ${sanitize(integrations[0])} call\n`;
+    if (integrations.length > 1) {
+      chart += `        Note over Ext: Also: ${integrations.slice(1, 4).map(sanitize).join(", ")}\n`;
+    }
+    chart += `        Ext-->>${caller}: Response\n`;
+    chart += `    end\n`;
   }
 
-  // Return flow
+  // Return flow with contextual labels
   const reversedLayers = [...layers].reverse();
   for (let i = 0; i < reversedLayers.length - 1; i++) {
-    chart += `    ${reversedLayers[i]}-->>${reversedLayers[i + 1]}: Response\n`;
+    chart += `    ${reversedLayers[i]}-->>${reversedLayers[i + 1]}: Result\n`;
   }
   if (layers.length > 0) {
     chart += `    ${reversedLayers[reversedLayers.length - 1]}-->>User: Updated view\n`;
@@ -112,12 +138,22 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
 
   // Add notes for additional modules in each layer
   if (frontend.length > 1) {
-    const others = frontend.slice(1, 4).map(sanitize).join(", ");
+    const others = frontend.slice(1, 4).map((m) => sanitize(m.name)).join(", ");
     chart += `    Note over UI: Also: ${others}\n`;
   }
   if (backend.length > 1) {
-    const others = backend.slice(1, 4).map(sanitize).join(", ");
+    const others = backend.slice(1, 4).map((m) => sanitize(m.name)).join(", ");
     chart += `    Note over Service: Also: ${others}\n`;
+  }
+  if (dataLayer.length > 1) {
+    const others = dataLayer.slice(1, 3).map((m) => sanitize(m.name)).join(", ");
+    chart += `    Note over DB: Also: ${others}\n`;
+  }
+
+  // Add note with additional API endpoints if available
+  if (apis.length > 1) {
+    const otherApis = apis.slice(1, 4).map(sanitize).join(", ");
+    chart += `    Note over API: Other endpoints: ${otherApis}\n`;
   }
 
   return chart;
