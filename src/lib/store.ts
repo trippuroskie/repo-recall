@@ -277,6 +277,102 @@ export async function getGitHubToken(userId: string): Promise<string | null> {
   return profile?.github_access_token ?? null;
 }
 
+// ─── Public Briefs ───
+
+type PublicBriefInsert = Database["public"]["Tables"]["public_briefs"]["Insert"];
+
+export async function getPublicBrief(
+  repoFullName: string
+): Promise<ProjectBrief | null> {
+  const supabase = await createServiceClient();
+  const { data, error } = await supabase
+    .from("public_briefs")
+    .select("*")
+    .eq("repo_full_name", repoFullName)
+    .single();
+
+  if (error || !data) return null;
+  return publicRowToBrief(data);
+}
+
+export async function getAllPublicBriefs(options?: {
+  featured?: boolean;
+  limit?: number;
+  offset?: number;
+}): Promise<{ briefs: ProjectBrief[]; total: number }> {
+  const supabase = await createServiceClient();
+  let query = supabase
+    .from("public_briefs")
+    .select("*", { count: "exact" })
+    .order("stars", { ascending: false });
+
+  if (options?.featured) {
+    query = query.eq("is_featured", true);
+  }
+  if (options?.limit) {
+    query = query.limit(options.limit);
+  }
+  if (options?.offset) {
+    query = query.range(options.offset, options.offset + (options.limit || 20) - 1);
+  }
+
+  const { data, error, count } = await query;
+  if (error || !data) return { briefs: [], total: 0 };
+  return { briefs: data.map(publicRowToBrief), total: count ?? 0 };
+}
+
+export async function savePublicBrief(
+  brief: ProjectBrief,
+  repoInfo: { stars: number; language: string | null; topics: string[] },
+  isFeatured: boolean = false
+): Promise<void> {
+  const supabase = await createServiceClient();
+  const now = new Date().toISOString();
+  const row: PublicBriefInsert = {
+    id: brief.id,
+    repo_full_name: brief.repoInfo.fullName,
+    repo_info: JSON.parse(JSON.stringify(brief.repoInfo)),
+    overview: JSON.parse(JSON.stringify(brief.overview)),
+    architecture: JSON.parse(JSON.stringify(brief.architecture)),
+    features: JSON.parse(JSON.stringify(brief.features)),
+    business_context: JSON.parse(JSON.stringify(brief.businessContext)),
+    timeline: JSON.parse(JSON.stringify(brief.timeline)),
+    entrypoints: JSON.parse(JSON.stringify(brief.entrypoints)),
+    stars: repoInfo.stars,
+    language: repoInfo.language,
+    topics: repoInfo.topics,
+    is_featured: isFeatured,
+    indexed_at: now,
+    last_refreshed_at: now,
+    ...(brief.codemap ? { codemap: JSON.parse(JSON.stringify(brief.codemap)) } : {}),
+    ...(brief.timelineData ? { timeline_data: JSON.parse(JSON.stringify(brief.timelineData)) } : {}),
+    ...(brief.diagrams ? { diagrams: JSON.parse(JSON.stringify(brief.diagrams)) } : {}),
+    ...(brief.overviewExplanation ? { overview_explanation: JSON.parse(JSON.stringify(brief.overviewExplanation)) } : {}),
+  };
+  const { error } = await supabase
+    .from("public_briefs")
+    .upsert(row, { onConflict: "repo_full_name" });
+  if (error) throw new Error(`Failed to save public brief: ${error.message}`);
+}
+
+function publicRowToBrief(row: Record<string, unknown>): ProjectBrief {
+  return {
+    id: row.id as string,
+    repoInfo: row.repo_info as unknown as ProjectBrief["repoInfo"],
+    generatedAt: (row.indexed_at as string) || (row.created_at as string),
+    overview: row.overview as unknown as ProjectBrief["overview"],
+    architecture: row.architecture as unknown as ProjectBrief["architecture"],
+    features: row.features as unknown as ProjectBrief["features"],
+    businessContext: row.business_context as unknown as ProjectBrief["businessContext"],
+    timeline: row.timeline as unknown as ProjectBrief["timeline"],
+    entrypoints: row.entrypoints as unknown as ProjectBrief["entrypoints"],
+    ...(row.codemap ? { codemap: row.codemap as unknown as ProjectBrief["codemap"] } : {}),
+    ...(row.timeline_data ? { timelineData: row.timeline_data as unknown as ProjectBrief["timelineData"] } : {}),
+    ...(row.diagrams ? { diagrams: row.diagrams as unknown as ProjectBrief["diagrams"] } : {}),
+    ...(row.overview_explanation ? { overviewExplanation: row.overview_explanation as unknown as ProjectBrief["overviewExplanation"] } : {}),
+  };
+}
+
 // Convert DB row to ProjectBrief type
 function rowToBrief(row: Record<string, unknown>): ProjectBrief {
   return {
