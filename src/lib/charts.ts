@@ -74,9 +74,10 @@ export function buildOverviewFlowChart(brief: ProjectBrief): string {
   }
   if (backend.length > 0) {
     const svc = backend[0];
+    const svcName = sanitize(svc.name);
     const svcAlias = svc.purpose
-      ? `${sanitize(svc.name)} - ${sanitize(svc.purpose).slice(0, 30)}`
-      : sanitize(svc.name);
+      ? `${svcName} - ${sanitize(svc.purpose)}`.slice(0, 50)
+      : svcName;
     chart += `    participant Service as ${svcAlias}\n`;
   }
   if (dataLayer.length > 0) {

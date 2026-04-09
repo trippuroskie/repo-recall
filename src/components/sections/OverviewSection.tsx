@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, Fragment } from "react";
+import { useState, useCallback, useMemo, Fragment } from "react";
 import type { ProjectBrief } from "@/lib/types";
 import { MermaidChart } from "@/components/MermaidChart";
 import { CodeViewer } from "@/components/CodeViewer";
@@ -38,6 +38,13 @@ export function OverviewSection({ brief, onCodePanelToggle }: { brief: ProjectBr
   const explanation =
     brief.overviewExplanation || buildFallbackExplanation(brief);
   const stats = overview.stats;
+
+  const displayedEntrypoints = useMemo(() => {
+    if (!brief.entrypoints?.length) return [];
+    const high = brief.entrypoints.filter((e) => e.priority === "high").slice(0, 3);
+    const others = brief.entrypoints.filter((e) => e.priority !== "high").slice(0, Math.max(0, 3 - high.length));
+    return [...high, ...others];
+  }, [brief.entrypoints]);
 
   const [expandedSteps, setExpandedSteps] = useState<Set<number>>(
     () => new Set(explanation ? explanation.steps.map((_, i) => i) : [])
@@ -272,22 +279,14 @@ export function OverviewSection({ brief, onCodePanelToggle }: { brief: ProjectBr
           )}
 
           {/* Where to Start — top entrypoints */}
-          {brief.entrypoints && brief.entrypoints.length > 0 && (
+          {displayedEntrypoints.length > 0 && (
             <div className="mb-8">
               <h3 className="text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3 flex items-center gap-2">
                 <PlayCircle size={14} />
                 Where to Start
               </h3>
               <div className="space-y-2">
-                {brief.entrypoints
-                  .filter((e) => e.priority === "high")
-                  .slice(0, 3)
-                  .concat(
-                    brief.entrypoints
-                      .filter((e) => e.priority !== "high")
-                      .slice(0, Math.max(0, 3 - brief.entrypoints.filter((e) => e.priority === "high").length))
-                  )
-                  .map((ep, i) => (
+                {displayedEntrypoints.map((ep, i) => (
                     <button
                       key={i}
                       onClick={() =>
