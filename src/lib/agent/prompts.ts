@@ -179,7 +179,7 @@ Output a valid JSON object with this exact structure:
 - Show the primary user flow step by step with actual function/method names where possible
 - Use loops, alt blocks, and notes to show conditional logic and important behavior
 - Include return arrows to show responses flowing back
-- Sanitize ALL participant aliases and message labels: no special characters (){}[]|;#& — use only alphanumeric, spaces, hyphens, slashes, and dots
+- Sanitize ALL participant aliases and message labels: no special characters {}[]|;#& — use only alphanumeric, spaces, hyphens, slashes, dots, and parentheses
 - Keep participant aliases short (under 30 chars)
 - Example structure:
   sequenceDiagram
