@@ -47,8 +47,10 @@ export async function updateSession(request: NextRequest) {
     !request.nextUrl.pathname.startsWith("/api/auth/") &&
     !request.nextUrl.pathname.startsWith("/api/webhooks/");
 
-  // Public API routes accessible without auth
-  const isPublicApi = request.nextUrl.pathname.startsWith("/api/explore");
+  // Public API routes accessible without auth (admin uses its own Bearer token check)
+  const isPublicApi =
+    request.nextUrl.pathname.startsWith("/api/explore") ||
+    request.nextUrl.pathname.startsWith("/api/admin/");
 
   const devBypass = process.env.DEV_BYPASS_AUTH === "true" && process.env.NODE_ENV === "development";
 
