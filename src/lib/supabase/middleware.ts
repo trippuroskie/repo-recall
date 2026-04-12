@@ -45,9 +45,7 @@ export async function updateSession(request: NextRequest) {
   const isProtectedApi =
     request.nextUrl.pathname.startsWith("/api/") &&
     !request.nextUrl.pathname.startsWith("/api/auth/") &&
-    !request.nextUrl.pathname.startsWith("/api/webhooks/") &&
-    !request.nextUrl.pathname.startsWith("/api/explore") &&
-    !request.nextUrl.pathname.startsWith("/api/admin/");
+    !request.nextUrl.pathname.startsWith("/api/webhooks/");
 
   // Public API routes accessible without auth
   const isPublicApi = request.nextUrl.pathname.startsWith("/api/explore");
