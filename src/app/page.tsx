@@ -68,6 +68,12 @@ export default function HomePage() {
           <Logo />
           <div className="flex items-center gap-4">
             <Link
+              href="/explore"
+              className="text-sm text-foreground-secondary hover:text-foreground transition-colors"
+            >
+              Explore
+            </Link>
+            <Link
               href="/briefs"
               className="text-sm text-foreground-secondary hover:text-foreground transition-colors"
             >
@@ -95,6 +101,10 @@ export default function HomePage() {
             <AnalyzeForm />
             <p className="text-xs text-foreground-secondary/50 mt-3">
               Works with any public GitHub repo. Add a token for private repos.
+              {" "}
+              <Link href="/explore" className="text-foreground-secondary hover:text-foreground transition-colors underline">
+                Or explore example briefs
+              </Link>
             </p>
           </div>
         </section>

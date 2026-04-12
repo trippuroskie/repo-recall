@@ -73,10 +73,49 @@ export async function getAllBriefs(): Promise<ProjectBrief[]> {
   const { data, error } = await supabase
     .from("briefs")
     .select("*")
+    .eq("is_public", false)
     .order("generated_at", { ascending: false });
 
   if (error || !data) return [];
   return data.map(rowToBrief);
+}
+
+export async function getPublicBriefs(): Promise<ProjectBrief[]> {
+  const supabase = await createServiceClient();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("*")
+    .eq("is_public", true)
+    .order("generated_at", { ascending: false });
+
+  if (error || !data) return [];
+  return data.map(rowToBrief);
+}
+
+export async function getPublicBrief(id: string): Promise<ProjectBrief | null> {
+  const supabase = await createServiceClient();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("*")
+    .eq("id", id)
+    .eq("is_public", true)
+    .single();
+
+  if (error || !data) return null;
+  return rowToBrief(data);
+}
+
+export async function getPublicBriefByRepo(repoFullName: string): Promise<ProjectBrief | null> {
+  const supabase = await createServiceClient();
+  const { data, error } = await supabase
+    .from("briefs")
+    .select("*")
+    .eq("repo_full_name", repoFullName)
+    .eq("is_public", true)
+    .single();
+
+  if (error || !data) return null;
+  return rowToBrief(data);
 }
 
 export async function deleteBrief(id: string): Promise<boolean> {
