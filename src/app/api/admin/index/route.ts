@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json().catch(() => ({}));
     const repos: string[] = body.repos || SEED_REPOS;
+    const featured: boolean = body.featured !== false; // default true — all admin-indexed repos are featured unless explicitly opted out
 
     const token = process.env.GITHUB_TOKEN;
     const results: { repo: string; status: string; error?: string }[] = [];
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       }
 
       const { owner, repo } = parsed;
-      const isFeatured = SEED_REPOS.includes(`${owner}/${repo}`);
+      const isFeatured = featured;
 
       try {
         console.log(`[admin/index] Indexing ${owner}/${repo}...`);
