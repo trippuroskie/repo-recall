@@ -60,9 +60,13 @@ export default function HomePage() {
             Which repo would you like to understand?
           </h1>
           <form onSubmit={handleSearch} className="max-w-xl mx-auto">
+            <label htmlFor="repo-search" className="sr-only">
+              Repository URL or name
+            </label>
             <div className="flex items-center gap-2 border border-border rounded-xl px-4 py-3 bg-white focus-within:border-foreground/30 transition-colors">
               <Search size={18} className="text-foreground-secondary shrink-0" />
               <input
+                id="repo-search"
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -72,6 +76,7 @@ export default function HomePage() {
               {searchQuery.trim() && (
                 <button
                   type="submit"
+                  aria-label="Analyze repository"
                   className="text-foreground-secondary hover:text-foreground transition-colors"
                 >
                   <ArrowRight size={16} />
