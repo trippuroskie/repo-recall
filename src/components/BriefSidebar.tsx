@@ -227,6 +227,7 @@ interface BriefSidebarProps {
   onToggleCollapse?: () => void;
   onConnectNew?: () => void;
   onOpenChat?: (sessionId: string, briefId: string) => void;
+  isPublic?: boolean;
 }
 
 // ─── Sidebar Component ───
@@ -240,6 +241,7 @@ export function BriefSidebar({
   onToggleCollapse,
   onConnectNew,
   onOpenChat,
+  isPublic = false,
 }: BriefSidebarProps) {
   const [reposOpen, setReposOpen] = useState(true);
   const [chatsOpen, setChatsOpen] = useState(false);
@@ -698,6 +700,7 @@ export function BriefSidebar({
               </button>
             )}
 
+            {!isPublic && (
             <button
               onClick={onConnectNew}
               className="sidebar-btn-hover"
@@ -718,6 +721,7 @@ export function BriefSidebar({
               <IconPlus />
               <span>Connect repo</span>
             </button>
+            )}
           </div>
         )}
 
@@ -792,7 +796,35 @@ export function BriefSidebar({
           }}
         />
 
-        {/* Chats section */}
+        {/* Chats section (hidden for public/explore view) */}
+        {isPublic ? (
+          <div style={{ padding: "12px 8px" }}>
+            <a
+              href="/login"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 6,
+                width: "100%",
+                padding: "8px 12px",
+                background: "rgb(55,53,47)",
+                color: "#fff",
+                border: "none",
+                cursor: "pointer",
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                textDecoration: "none",
+              }}
+            >
+              Sign in with GitHub
+            </a>
+            <p style={{ fontSize: 11, color: "rgb(160,159,156)", textAlign: "center", marginTop: 6, lineHeight: 1.4 }}>
+              Chat, analyze your own repos, and more
+            </p>
+          </div>
+        ) : (
         <div style={{ padding: "6px 0" }}>
           <button
             onClick={() => setChatsOpen((p) => !p)}
@@ -936,6 +968,7 @@ export function BriefSidebar({
             </div>
           )}
         </div>
+        )}
 
         {/* Divider */}
         <div
