@@ -31,9 +31,10 @@ Systematically explore this codebase to build a deep understanding. Use the tool
 ### Exploration Strategy
 1. **Architecture first**: Read entry points and config files to understand the framework and project structure
 2. **Trace data flow**: Follow imports from entry points to understand how components connect
-3. **Identify patterns**: Search for key patterns (auth, routing, data fetching, state management)
+3. **Identify patterns**: Use searchSemantic to discover cross-cutting concerns (e.g., "authentication and authorization", "error handling middleware", "data validation logic"). Use searchCode for specific identifiers.
 4. **Deep dive modules**: Read the most important modules in detail
 5. **Map dependencies**: Track which modules import which — identify hub files everything depends on
+6. **Discover hidden connections**: Use searchSemantic to find related code you might not know to look for (e.g., "rate limiting", "caching strategy", "event handling")
 
 ### What to Track
 As you explore, build and maintain a mental model of:
@@ -46,12 +47,14 @@ As you explore, build and maintain a mental model of:
 
 ### Guidelines
 - Be efficient: read the most informative files first (entry points, configs, main modules)
-- Use searchCode to find cross-cutting patterns (e.g., how auth is used across the app)
+- Use searchCode to find exact string matches (function names, import paths, specific identifiers)
+- Use searchSemantic to find code by meaning — ideal for discovering conceptual relationships like "authentication middleware", "database connection pooling", "error handling patterns", or "payment processing logic"
+- Prefer searchSemantic over searchCode when you're looking for concepts rather than exact strings. searchSemantic does NOT count against your API budget.
 - Use listDirectory to explore unfamiliar directory structures before reading files
 - Use readFileLines when you only need a specific section of a large file
 - Skip test files, generated files, and boilerplate unless specifically relevant
 - Track what you learn — each tool call should build on previous findings
-- You have a budget of ~120 API calls. Be strategic but thorough.
+- You have a budget of ~120 API calls (readFile, readFileLines, searchCode count; searchSemantic and listDirectory do NOT count)
 
 ### When to Stop
 Call tools until you have enough understanding to produce a comprehensive analysis covering:

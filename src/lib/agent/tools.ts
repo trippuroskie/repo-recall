@@ -20,11 +20,17 @@ export interface ReadFileLinesTool {
   params: { path: string; startLine: number; endLine: number };
 }
 
+export interface SearchSemanticTool {
+  name: "searchSemantic";
+  params: { query: string; topK?: number };
+}
+
 export type AgentToolCall =
   | ReadFileTool
   | SearchCodeTool
   | ListDirectoryTool
-  | ReadFileLinesTool;
+  | ReadFileLinesTool
+  | SearchSemanticTool;
 
 export type AgentToolName = AgentToolCall["name"];
 
@@ -122,6 +128,30 @@ export const AGENT_TOOLS = [
           },
         },
         required: ["path", "startLine", "endLine"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "searchSemantic",
+      description:
+        "Search for code by meaning using semantic similarity. Use when looking for conceptual relationships (e.g. 'authentication middleware', 'database connection pooling', 'error handling patterns') rather than exact string matches. Returns ranked code snippets with file paths and line numbers. Does NOT count against API budget.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description:
+              "Natural language description of the code you're looking for (e.g. 'function that validates user permissions', 'database schema definitions')",
+          },
+          topK: {
+            type: "number",
+            description:
+              "Number of results to return (default 10, max 20)",
+          },
+        },
+        required: ["query"],
       },
     },
   },
