@@ -492,9 +492,9 @@ function buildBriefFromSynthesis(
   if (diagramsRaw) {
     const diagrams: ProjectBrief["diagrams"] = {};
     // Anchored regex for full-string validation (must start with a mermaid keyword)
-    const mermaidKeywordRe = /^\s*(graph\s+(TD|LR|TB|BT|RL)\b|sequenceDiagram|flowchart\s+(TD|LR|TB|BT|RL)\b|gantt|pie|classDiagram|stateDiagram(-v2)?)/i;
+    const mermaidKeywordRe = /^\s*(graph\s+(TD|LR|TB|BT|RL)\b|sequenceDiagram|flowchart\s+(TD|LR|TB|BT|RL)\b|gantt|pie|classDiagram|stateDiagram(-v2)?|erDiagram)/i;
     // Unanchored regex for finding the first mermaid keyword anywhere in a string
-    const mermaidKeywordAnywhereRe = /(graph\s+(TD|LR|TB|BT|RL)\b|sequenceDiagram|flowchart\s+(TD|LR|TB|BT|RL)\b|gantt|pie|classDiagram|stateDiagram(-v2)?)/i;
+    const mermaidKeywordAnywhereRe = /(graph\s+(TD|LR|TB|BT|RL)\b|sequenceDiagram|flowchart\s+(TD|LR|TB|BT|RL)\b|gantt|pie|classDiagram|stateDiagram(-v2)?|erDiagram)/i;
     const isValidMermaid = (v: unknown): v is string =>
       typeof v === "string" && mermaidKeywordRe.test(v);
 
@@ -503,6 +503,8 @@ function buildBriefFromSynthesis(
       overview: /^\s*sequenceDiagram/i,
       architecture: /^\s*(graph|flowchart)\s+(TD|LR|TB|BT|RL)\b/i,
       stack: /^\s*(graph|flowchart)\s+(TD|LR|TB|BT|RL)\b/i,
+      dataFlow: /^\s*flowchart\s+LR\b/i,
+      entityRelationship: /^\s*erDiagram/i,
     };
 
     // Strip markdown fences and leading prose that LLMs often add
@@ -520,7 +522,7 @@ function buildBriefFromSynthesis(
       return cleaned || null;
     };
 
-    for (const key of ["overview", "architecture", "stack"] as const) {
+    for (const key of ["overview", "architecture", "stack", "dataFlow", "entityRelationship"] as const) {
       const cleaned = cleanMermaid(diagramsRaw[key]);
       if (cleaned && isValidMermaid(cleaned) && expectedTypeRe[key].test(cleaned)) {
         diagrams[key] = cleaned;

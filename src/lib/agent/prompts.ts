@@ -80,7 +80,7 @@ When you're ready to stop exploring, respond with a final message summarizing al
 
 export const SYNTHESIS_PROMPT = `You are a code analysis expert. Given exploration findings from a codebase investigation, produce a structured analysis.
 
-Output a valid JSON object with this exact structure:
+Output a valid JSON object with this structure. Optional keys may be omitted when explicitly instructed below:
 
 {
   "overview": {
@@ -144,7 +144,8 @@ Output a valid JSON object with this exact structure:
   "diagrams": {
     "overview": "sequenceDiagram showing the complete workflow — how a user action flows through the system from UI through API/services to data stores and back, using actual component/function names from the code",
     "architecture": "graph TD mermaid diagram showing how key modules relate to each other",
-    "stack": "graph TD mermaid diagram showing the technology stack layers"
+    "stack": "graph TD mermaid diagram showing the technology stack layers",
+    "dataFlow": "flowchart LR showing how data moves through the system — user input to API to services to database/external services, with descriptive edge labels for transformations"
   },
   "overviewExplanation": {
     "introduction": "1-2 sentences introducing how the system works at a high level, matching the diagram above",
@@ -207,6 +208,20 @@ Output a valid JSON object with this exact structure:
 - Wrap all node labels in double quotes inside brackets: N1["Label Here"]
 - The architecture diagram should show actual import/dependency relationships between modules
 - The stack diagram should show technology layers with the actual technologies used
+
+#### Data Flow Diagram (use flowchart LR)
+- Show how data moves through the system: user input → API → services → database/external services
+- Use descriptive edge labels for data transformations (e.g., "validates", "transforms", "persists")
+- Max 15 nodes — focus on the primary data path, not every edge case
+- Use subgraphs to group by layer (e.g., "Client", "API", "Services", "Storage")
+
+#### Entity Relationship Diagram (use erDiagram)
+- ONLY generate this diagram when the repo has clear data models (DB schemas, ORM models, type definitions with relationships)
+- If no clear data models exist, omit the "entityRelationship" key entirely from the JSON
+- Max 10 entities — show the core domain models, not every type
+- Use actual model/table names from the code
+- Show relationship cardinality (one-to-many, many-to-many, etc.)
+- Include key attributes for each entity (2-4 most important fields)
 
 ### Overview Explanation Rules
 - The overviewExplanation should narrate the flow shown in the sequence diagram — think of it as a guided walkthrough
