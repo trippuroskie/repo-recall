@@ -23,6 +23,7 @@ import {
 } from "./prompts";
 import { generateBrief } from "../analysis";
 import { EmbeddingStore } from "./vectorSearch";
+import { createServiceClient } from "../supabase/server";
 
 // Progress events emitted during analysis
 export type ProgressEvent =
@@ -86,6 +87,7 @@ async function runStandardAnalysis(config: OrchestratorConfig): Promise<ProjectB
     files,
     readme,
     packageJson,
+    commits,
     token,
     emit
   );
@@ -153,6 +155,7 @@ async function runDeepAnalysis(config: OrchestratorConfig): Promise<ProjectBrief
     files,
     readme,
     packageJson,
+    commits,
     token,
     emit
   );
@@ -610,17 +613,51 @@ async function createAndSeedEmbeddingStore(
   files: FileNode[],
   readme: string | null,
   packageJson: string | null,
+  commits: CommitSummary[],
   token: string | undefined,
   emit: ProgressCallback
 ): Promise<EmbeddingStore | undefined> {
   if (!process.env.OPENROUTER_API_KEY) return undefined;
 
-  let embeddingStore: EmbeddingStore | undefined = new EmbeddingStore();
+  // Phase 6: wire up pgvector persistence when we have a commit SHA to key on
+  // and Supabase service credentials available. If either is missing, fall
+  // back to the original in-memory-only behavior.
+  const commitSha = commits[0]?.sha;
+  const hasServiceCreds =
+    !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let supabase: Awaited<ReturnType<typeof createServiceClient>> | undefined;
+  if (commitSha && hasServiceCreds) {
+    try {
+      supabase = await createServiceClient();
+    } catch (err) {
+      console.warn("[orchestrator] Could not create Supabase service client:", err);
+    }
+  }
+
+  let embeddingStore: EmbeddingStore | undefined = new EmbeddingStore({
+    repoSlug: repoInfo.fullName,
+    commitSha,
+    supabase,
+  });
+
+  // Load any chunks previously embedded for this (repo, commit) so we skip
+  // re-embedding the same content on reruns.
+  let cachedCount = 0;
+  if (supabase && commitSha) {
+    try {
+      cachedCount = await embeddingStore.loadFromDb();
+    } catch (err) {
+      console.warn("[orchestrator] loadFromDb failed, continuing:", err);
+    }
+  }
 
   emit({
     type: "step",
     action: "seedIndex",
-    detail: "Indexing key files for semantic search",
+    detail:
+      cachedCount > 0
+        ? `Loaded ${cachedCount} cached chunks; indexing remaining key files`
+        : "Indexing key files for semantic search",
     status: "started",
   });
   try {
@@ -636,7 +673,7 @@ async function createAndSeedEmbeddingStore(
     emit({
       type: "step",
       action: "seedIndex",
-      detail: `Indexed ${embeddingStore.size} chunks`,
+      detail: `Indexed ${embeddingStore.size} chunks${cachedCount > 0 ? ` (${cachedCount} from cache)` : ""}`,
       status: "done",
     });
   }
