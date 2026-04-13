@@ -49,13 +49,11 @@ function isStepInProgress(trace: TraceEvent, allTraces: TraceEvent[], isStreamin
   if (trace.status === "done") return false;
   // "thinking" stays in-progress as long as we're still streaming
   if (trace.action === "thinking") return isStreaming;
-  // Check if there's a corresponding "done" event for group actions
-  if (trace.action === "select_files" || trace.action === "fetch_files") {
-    return !allTraces.some(
-      (t) => t.action === trace.action && t.status === "done"
-    );
-  }
-  return true;
+  // For any started event, treat it as resolved once a matching done event
+  // with the same action has arrived.
+  return !allTraces.some(
+    (t) => t.action === trace.action && t.status === "done"
+  );
 }
 
 export function ChatTraceGroup({
