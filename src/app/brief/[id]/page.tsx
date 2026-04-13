@@ -252,6 +252,14 @@ function BriefPage() {
               {sectionLabels[activeSection] || "Overview"}
             </span>
             <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              {brief.depth === "deep" && (
+                <span
+                  className="flex items-center gap-1 text-[10px] uppercase tracking-wider font-semibold text-accent border border-accent/40 rounded-full px-2 py-0.5"
+                  title="Generated with Deep Research (multi-cycle analysis)"
+                >
+                  Deep Research
+                </span>
+              )}
               <span className="flex items-center gap-1.5 text-xs text-foreground-secondary">
                 <Clock size={12} />
                 {formatDistanceToNow(new Date(brief.generatedAt), {

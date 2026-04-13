@@ -67,6 +67,7 @@ export interface Database {
           entrypoints: Json;
           codemap: Json | null;
           timeline_data: Json | null;
+          depth: string | null;
           generated_at: string;
           created_at: string;
           updated_at: string;
@@ -84,6 +85,7 @@ export interface Database {
           entrypoints: Json;
           codemap?: Json | null;
           timeline_data?: Json | null;
+          depth?: string | null;
           generated_at: string;
           created_at?: string;
           updated_at?: string;
@@ -101,6 +103,7 @@ export interface Database {
           entrypoints?: Json;
           codemap?: Json | null;
           timeline_data?: Json | null;
+          depth?: string | null;
           generated_at?: string;
           updated_at?: string;
         };
@@ -205,6 +208,7 @@ export interface Database {
           timeline_data: Json | null;
           diagrams: Json | null;
           overview_explanation: Json | null;
+          depth: string | null;
           stars: number;
           language: string | null;
           topics: string[];
@@ -228,6 +232,7 @@ export interface Database {
           timeline_data?: Json | null;
           diagrams?: Json | null;
           overview_explanation?: Json | null;
+          depth?: string | null;
           stars?: number;
           language?: string | null;
           topics?: string[];
@@ -251,6 +256,7 @@ export interface Database {
           timeline_data?: Json | null;
           diagrams?: Json | null;
           overview_explanation?: Json | null;
+          depth?: string | null;
           stars?: number;
           language?: string | null;
           topics?: string[];

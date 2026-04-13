@@ -14,7 +14,13 @@ import type {
 } from "../types";
 import { ToolExecutor, type ExecutorConfig } from "./executor";
 import { AGENT_TOOLS, type AgentToolCall, type ToolResult } from "./tools";
-import { buildExplorationPrompt, SYNTHESIS_PROMPT } from "./prompts";
+import {
+  buildExplorationPrompt,
+  SYNTHESIS_PROMPT,
+  GAP_ANALYSIS_PROMPT,
+  buildCycle2ExplorationPrompt,
+  type GapTarget,
+} from "./prompts";
 import { generateBrief } from "../analysis";
 import { EmbeddingStore } from "./vectorSearch";
 
@@ -22,7 +28,14 @@ import { EmbeddingStore } from "./vectorSearch";
 export type ProgressEvent =
   | { type: "step"; action: string; detail: string; status: "started" | "done" }
   | { type: "finding"; category: string; summary: string }
-  | { type: "progress"; phase: string; current: number; total: number }
+  | {
+      type: "progress";
+      phase: string;
+      current: number;
+      total: number;
+      cycle?: number;
+      totalCycles?: number;
+    }
   | { type: "complete"; brief: ProjectBrief }
   | { type: "error"; message: string };
 
@@ -37,33 +50,45 @@ interface OrchestratorConfig {
   readme: string | null;
   token?: string;
   onProgress?: ProgressCallback;
+  depth?: "standard" | "deep";
 }
 
 const MAX_ITERATIONS = 35;
+const CYCLE2_MAX_ITERATIONS = 20;
+const CYCLE2_EXTRA_BUDGET = 80;
+// Deep-mode deadline must fit inside the analyze route's `maxDuration = 300` on
+// Vercel. We leave ~30s of headroom for synthesis + saveBrief after the last
+// cycle so we don't get killed mid-write. If the route limit ever changes, bump
+// this alongside it.
+const DEEP_HARD_TIMEOUT_MS = 270 * 1000;
 const EXPLORATION_MODEL = process.env.AGENT_EXPLORATION_MODEL || "google/gemini-3-flash-preview";
 const SYNTHESIS_MODEL = process.env.AGENT_SYNTHESIS_MODEL || "google/gemini-3.1-pro-preview";
 
+type ChatMessage = {
+  role: "system" | "user" | "assistant" | "tool";
+  content: string;
+  tool_call_id?: string;
+  name?: string;
+};
+
 export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<ProjectBrief> {
+  const depth = config.depth === "deep" ? "deep" : "standard";
+  if (depth === "deep") return runDeepAnalysis(config);
+  return runStandardAnalysis(config);
+}
+
+async function runStandardAnalysis(config: OrchestratorConfig): Promise<ProjectBrief> {
   const { repoInfo, files, prs, commits, packageJson, readme, token, onProgress } = config;
   const emit = onProgress || (() => {});
 
-  // Initialize embedding store for semantic search (uses OPENROUTER_API_KEY)
-  let embeddingStore: EmbeddingStore | undefined;
-  if (process.env.OPENROUTER_API_KEY) {
-    embeddingStore = new EmbeddingStore();
-
-    // Seed with high-signal files before exploration begins
-    emit({ type: "step", action: "seedIndex", detail: "Indexing key files for semantic search", status: "started" });
-    try {
-      await seedEmbeddingStore(embeddingStore, repoInfo, files, readme, packageJson, token);
-    } catch (err) {
-      console.warn("[orchestrator] Embedding store seeding failed, continuing without semantic search:", err);
-      embeddingStore = undefined;
-    }
-    if (embeddingStore) {
-      emit({ type: "step", action: "seedIndex", detail: `Indexed ${embeddingStore.size} chunks`, status: "done" });
-    }
-  }
+  const embeddingStore = await createAndSeedEmbeddingStore(
+    repoInfo,
+    files,
+    readme,
+    packageJson,
+    token,
+    emit
+  );
 
   const executor = new ToolExecutor({
     owner: repoInfo.owner,
@@ -77,35 +102,278 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
   emit({ type: "progress", phase: "Exploring codebase", current: 1, total: 3 });
 
   const explorationPrompt = buildExplorationPrompt(repoInfo, files, readme, packageJson);
-  const toolResults: ToolResult[] = [];
-
-  // Conversation history for the agent loop
-  const messages: { role: "system" | "user" | "assistant" | "tool"; content: string; tool_call_id?: string; name?: string }[] = [
+  const messages: ChatMessage[] = [
     { role: "system", content: explorationPrompt },
-    { role: "user", content: "Begin exploring this codebase. Start by identifying the main entry points and architecture." },
+    {
+      role: "user",
+      content:
+        "Begin exploring this codebase. Start by identifying the main entry points and architecture.",
+    },
   ];
 
+  const { explorationSummary, toolResults } = await runExplorationCycle({
+    executor,
+    messages,
+    emit,
+    maxIterations: MAX_ITERATIONS,
+    phaseLabel: "Exploring codebase",
+  });
+
+  // Phase 2: Synthesis
+  emit({ type: "progress", phase: "Synthesizing findings", current: 2, total: 3 });
+
+  const brief = await synthesize({
+    repoInfo,
+    files,
+    prs,
+    commits,
+    packageJson,
+    readme,
+    explorationSummary,
+    toolResults,
+    emit,
+  });
+
+  brief.depth = "standard";
+
+  await finalizeTimeline(brief, prs, commits, emit);
+
+  emit({ type: "progress", phase: "Complete", current: 3, total: 3 });
+
+  return brief;
+}
+
+async function runDeepAnalysis(config: OrchestratorConfig): Promise<ProjectBrief> {
+  const { repoInfo, files, prs, commits, packageJson, readme, token, onProgress } = config;
+  const emit = onProgress || (() => {});
+  const deadline = Date.now() + DEEP_HARD_TIMEOUT_MS;
+
+  const embeddingStore = await createAndSeedEmbeddingStore(
+    repoInfo,
+    files,
+    readme,
+    packageJson,
+    token,
+    emit
+  );
+
+  const executor = new ToolExecutor({
+    owner: repoInfo.owner,
+    repo: repoInfo.name,
+    token,
+    fileTree: files,
+    embeddingStore,
+  });
+
+  // --- Cycle 1: standard exploration ---
+  emit({
+    type: "progress",
+    phase: "Cycle 1 of 2 — initial exploration",
+    current: 1,
+    total: 4,
+    cycle: 1,
+    totalCycles: 2,
+  });
+
+  const cycle1Messages: ChatMessage[] = [
+    { role: "system", content: buildExplorationPrompt(repoInfo, files, readme, packageJson) },
+    {
+      role: "user",
+      content:
+        "Begin exploring this codebase. Start by identifying the main entry points and architecture.",
+    },
+  ];
+
+  const cycle1 = await runExplorationCycle({
+    executor,
+    messages: cycle1Messages,
+    emit,
+    maxIterations: MAX_ITERATIONS,
+    phaseLabel: "Cycle 1 of 2 — initial exploration",
+    cycle: 1,
+    totalCycles: 2,
+    deadline,
+  });
+
+  const allToolResults: ToolResult[] = [...cycle1.toolResults];
+
+  // --- Gap Analysis ---
+  let gaps: GapTarget[] = [];
+  if (Date.now() < deadline) {
+    emit({
+      type: "progress",
+      phase: "Analyzing gaps",
+      current: 2,
+      total: 4,
+      cycle: 1,
+      totalCycles: 2,
+    });
+    try {
+      gaps = await runGapAnalysis(repoInfo, cycle1.explorationSummary, allToolResults);
+    } catch (err) {
+      console.warn("[orchestrator] Gap analysis failed, skipping cycle 2:", err);
+      gaps = [];
+    }
+  }
+
+  // --- Cycle 2: targeted deep dive ---
+  let cycle2Summary = "";
+  let cycle2Ran = false;
+  if (gaps.length > 0 && Date.now() < deadline) {
+    emit({
+      type: "progress",
+      phase: `Cycle 2 of 2 — deep dive on ${gaps.length} gap${gaps.length === 1 ? "" : "s"}`,
+      current: 3,
+      total: 4,
+      cycle: 2,
+      totalCycles: 2,
+    });
+
+    // Extend the API budget so cycle 2 has fresh headroom without wiping cycle 1 history
+    executor.extendBudget(CYCLE2_EXTRA_BUDGET);
+
+    const cycle2Messages: ChatMessage[] = [
+      {
+        role: "system",
+        content: buildCycle2ExplorationPrompt(
+          repoInfo,
+          files,
+          readme,
+          packageJson,
+          cycle1.explorationSummary,
+          gaps
+        ),
+      },
+      {
+        role: "user",
+        content:
+          "Begin cycle 2. Tackle the gap targets in order of importance. Be decisive — do not re-explore prior territory.",
+      },
+    ];
+
+    const cycle2 = await runExplorationCycle({
+      executor,
+      messages: cycle2Messages,
+      emit,
+      maxIterations: CYCLE2_MAX_ITERATIONS,
+      phaseLabel: "Cycle 2 of 2 — deep dive",
+      cycle: 2,
+      totalCycles: 2,
+      deadline,
+    });
+
+    cycle2Summary = cycle2.explorationSummary;
+    allToolResults.push(...cycle2.toolResults);
+    cycle2Ran = true;
+  }
+
+  // --- Final Synthesis ---
+  // Only report cycle: 2 when cycle 2 actually executed. If it was skipped
+  // (gap analysis failed, no gaps, or deadline reached), the deep run
+  // gracefully degraded to a single cycle and the UI should reflect that.
+  const finalCycle = cycle2Ran ? 2 : 1;
+  emit({
+    type: "progress",
+    phase: "Synthesizing findings",
+    current: 4,
+    total: 4,
+    cycle: finalCycle,
+    totalCycles: 2,
+  });
+
+  const mergedSummary = cycle2Summary
+    ? `# Cycle 1 Findings\n\n${cycle1.explorationSummary}\n\n# Cycle 2 Findings (Gap-Targeted Deep Dive)\n\n${cycle2Summary}`
+    : cycle1.explorationSummary;
+
+  const brief = await synthesize({
+    repoInfo,
+    files,
+    prs,
+    commits,
+    packageJson,
+    readme,
+    explorationSummary: mergedSummary,
+    toolResults: allToolResults,
+    emit,
+  });
+
+  brief.depth = "deep";
+
+  await finalizeTimeline(brief, prs, commits, emit, {
+    phase: "Generating timeline insights",
+    current: 3.5,
+    total: 4,
+    cycle: finalCycle,
+    totalCycles: 2,
+  });
+
+  emit({
+    type: "progress",
+    phase: "Complete",
+    current: 4,
+    total: 4,
+    cycle: finalCycle,
+    totalCycles: 2,
+  });
+
+  return brief;
+}
+
+// ---------------------------------------------------------------------------
+// Exploration loop — shared between standard and deep modes
+// ---------------------------------------------------------------------------
+
+interface ExplorationCycleInput {
+  executor: ToolExecutor;
+  messages: ChatMessage[];
+  emit: ProgressCallback;
+  maxIterations: number;
+  phaseLabel: string;
+  cycle?: number;
+  totalCycles?: number;
+  /** Wall-clock deadline in ms since epoch. If reached, cycle ends early. */
+  deadline?: number;
+}
+
+interface ExplorationCycleResult {
+  explorationSummary: string;
+  toolResults: ToolResult[];
+}
+
+async function runExplorationCycle(
+  input: ExplorationCycleInput
+): Promise<ExplorationCycleResult> {
+  const { executor, messages, emit, maxIterations, phaseLabel, cycle, totalCycles, deadline } =
+    input;
+  const toolResults: ToolResult[] = [];
   let iteration = 0;
   let explorationFinished = false;
 
-  while (iteration < MAX_ITERATIONS && !explorationFinished) {
+  while (iteration < maxIterations && !explorationFinished) {
+    if (deadline && Date.now() >= deadline) {
+      emit({ type: "error", message: "Hard timeout reached — wrapping up exploration." });
+      break;
+    }
+
     iteration++;
     emit({
       type: "progress",
-      phase: "Exploring codebase",
+      phase: phaseLabel,
       current: iteration,
-      total: MAX_ITERATIONS,
+      total: maxIterations,
+      cycle,
+      totalCycles,
     });
 
     // Check API budget
     if (executor.budgetRemaining <= 2) {
       messages.push({
         role: "user",
-        content: "API budget nearly exhausted. Please summarize your findings now. Do NOT call any more tools.",
+        content:
+          "API budget nearly exhausted. Please summarize your findings now. Do NOT call any more tools.",
       });
     }
 
-    // Call exploration LLM
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error("OPENROUTER_API_KEY not configured");
 
@@ -132,7 +400,6 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
       });
     } catch (fetchErr) {
       clearTimeout(explorationTimeout);
-      // On timeout, stop exploring and proceed to synthesis with what we have
       if (fetchErr instanceof Error && fetchErr.name === "AbortError") {
         emit({ type: "error", message: "Exploration call timed out. Proceeding to synthesis." });
         explorationFinished = true;
@@ -155,15 +422,12 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
     const assistantMessage = choice.message;
     messages.push(assistantMessage);
 
-    // Check for tool calls
     const toolCalls = assistantMessage.tool_calls;
     if (!toolCalls || toolCalls.length === 0) {
-      // No tool calls — the LLM is done exploring
       explorationFinished = true;
       continue;
     }
 
-    // Execute each tool call
     for (const tc of toolCalls) {
       const fn = tc.function;
       let params: Record<string, unknown>;
@@ -178,66 +442,145 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
         params: params as AgentToolCall["params"],
       } as AgentToolCall;
 
-      emit({
-        type: "step",
-        action: fn.name,
-        detail: fn.name === "readFile" || fn.name === "readFileLines"
+      const stepDetail =
+        fn.name === "readFile" || fn.name === "readFileLines"
           ? (params.path as string) || ""
-          : fn.name === "searchCode"
+          : fn.name === "searchCode" || fn.name === "searchSemantic"
             ? `"${params.query}"`
-            : (params.path as string) || "",
-        status: "started",
-      });
+            : (params.path as string) || "";
+
+      emit({ type: "step", action: fn.name, detail: stepDetail, status: "started" });
 
       const toolResult = await executor.execute(toolCall);
       toolResults.push(toolResult);
 
-      emit({
-        type: "step",
-        action: fn.name,
-        detail: fn.name === "readFile" || fn.name === "readFileLines"
-          ? (params.path as string) || ""
-          : fn.name === "searchCode"
-            ? `"${params.query}"`
-            : (params.path as string) || "",
-        status: "done",
-      });
+      emit({ type: "step", action: fn.name, detail: stepDetail, status: "done" });
 
-      // Feed result back to conversation
       messages.push({
         role: "tool",
         tool_call_id: tc.id,
-        content: toolResult.result.slice(0, 12000), // cap per-result size
+        content: toolResult.result.slice(0, 12000),
       });
     }
   }
 
-  // Phase 2: Synthesis
-  emit({ type: "progress", phase: "Synthesizing findings", current: 2, total: 3 });
-
-  // Gather the exploration summary — prefer the final text message, but collect all assistant text
   const assistantTexts = messages
     .filter((m) => m.role === "assistant" && typeof m.content === "string" && m.content.length > 0)
     .map((m) => m.content as string);
 
-  const explorationSummary = assistantTexts.length > 0
-    ? assistantTexts.join("\n\n")
-    : buildFallbackSummary(toolResults);
+  const explorationSummary =
+    assistantTexts.length > 0 ? assistantTexts.join("\n\n") : buildFallbackSummary(toolResults);
 
-  const brief = await synthesize({
-    repoInfo,
-    files,
-    prs,
-    commits,
-    packageJson,
-    readme,
-    explorationSummary,
-    toolResults,
-    emit,
-  });
+  return { explorationSummary, toolResults };
+}
 
-  // Phase 3: Generate AI milestone summaries and populate timelineData
-  emit({ type: "progress", phase: "Generating timeline insights", current: 2.5, total: 3 });
+// ---------------------------------------------------------------------------
+// Gap analysis — bridges cycle 1 and cycle 2 in deep research mode
+// ---------------------------------------------------------------------------
+
+async function runGapAnalysis(
+  repoInfo: RepoInfo,
+  cycle1Summary: string,
+  toolResults: ToolResult[]
+): Promise<GapTarget[]> {
+  const apiKey = process.env.OPENROUTER_API_KEY;
+  if (!apiKey) return [];
+
+  const reads = toolResults
+    .filter((r) => (r.tool === "readFile" || r.tool === "readFileLines") && !r.error)
+    .map((r) => r.params.path as string);
+  const readsList = reads.length > 0
+    ? `\n\nFiles already explored:\n${reads.slice(0, 60).map((p) => `- ${p}`).join("\n")}`
+    : "";
+
+  const summary = cycle1Summary.length > 8000 ? cycle1Summary.slice(0, 8000) + "\n...(truncated)" : cycle1Summary;
+
+  const userContent = `Repository: ${repoInfo.fullName}
+
+## Cycle 1 Findings
+${summary}
+${readsList}
+
+Produce the gap-analysis JSON now.`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+
+  try {
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://reporecall.dev",
+        "X-Title": "RepoRecall GapAnalysis",
+      },
+      body: JSON.stringify({
+        model: SYNTHESIS_MODEL,
+        messages: [
+          { role: "system", content: GAP_ANALYSIS_PROMPT },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.3,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) return [];
+    const result = await response.json();
+    const content: string | undefined = result.choices?.[0]?.message?.content;
+    if (!content) return [];
+
+    let cleaned = content.trim();
+    if (cleaned.startsWith("```")) {
+      cleaned = cleaned.replace(/^```(?:json)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+    }
+
+    const parsed = JSON.parse(cleaned) as { gaps?: unknown };
+    const gapsRaw = Array.isArray(parsed.gaps) ? (parsed.gaps as Record<string, unknown>[]) : [];
+
+    const gaps: GapTarget[] = [];
+    for (const g of gapsRaw) {
+      const area = typeof g.area === "string" ? g.area.trim() : "";
+      const missing = typeof g.missing === "string" ? g.missing.trim() : "";
+      const investigationPlan =
+        typeof g.investigationPlan === "string" ? g.investigationPlan.trim() : "";
+      const questionsRaw = Array.isArray(g.questions) ? g.questions : [];
+      const questions = questionsRaw
+        .filter((q): q is string => typeof q === "string" && q.trim().length > 0)
+        .map((q) => q.trim());
+      if (area && missing && investigationPlan && questions.length > 0) {
+        gaps.push({ area, missing, investigationPlan, questions });
+      }
+      if (gaps.length >= 5) break;
+    }
+
+    return gaps;
+  } catch {
+    return [];
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Finalize timeline with AI milestone summaries (shared)
+// ---------------------------------------------------------------------------
+
+async function finalizeTimeline(
+  brief: ProjectBrief,
+  prs: PRSummary[],
+  commits: CommitSummary[],
+  emit: ProgressCallback,
+  progress: {
+    phase: string;
+    current: number;
+    total: number;
+    cycle?: number;
+    totalCycles?: number;
+  } = { phase: "Generating timeline insights", current: 2.5, total: 3 }
+): Promise<void> {
+  emit({ type: "progress", ...progress });
 
   const mergedPRs = prs.filter((pr) => pr.mergedAt);
   const timelineData: TimelineData = {
@@ -256,10 +599,48 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
   }
 
   brief.timelineData = timelineData;
+}
 
-  emit({ type: "progress", phase: "Complete", current: 3, total: 3 });
+// ---------------------------------------------------------------------------
+// Embedding store initialization (shared)
+// ---------------------------------------------------------------------------
 
-  return brief;
+async function createAndSeedEmbeddingStore(
+  repoInfo: RepoInfo,
+  files: FileNode[],
+  readme: string | null,
+  packageJson: string | null,
+  token: string | undefined,
+  emit: ProgressCallback
+): Promise<EmbeddingStore | undefined> {
+  if (!process.env.OPENROUTER_API_KEY) return undefined;
+
+  let embeddingStore: EmbeddingStore | undefined = new EmbeddingStore();
+
+  emit({
+    type: "step",
+    action: "seedIndex",
+    detail: "Indexing key files for semantic search",
+    status: "started",
+  });
+  try {
+    await seedEmbeddingStore(embeddingStore, repoInfo, files, readme, packageJson, token);
+  } catch (err) {
+    console.warn(
+      "[orchestrator] Embedding store seeding failed, continuing without semantic search:",
+      err
+    );
+    embeddingStore = undefined;
+  }
+  if (embeddingStore) {
+    emit({
+      type: "step",
+      action: "seedIndex",
+      detail: `Indexed ${embeddingStore.size} chunks`,
+      status: "done",
+    });
+  }
+  return embeddingStore;
 }
 
 interface SynthesisInput {

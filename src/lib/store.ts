@@ -33,6 +33,7 @@ export async function saveBrief(
     generated_at: brief.generatedAt,
     ...(brief.codemap ? { codemap: JSON.parse(JSON.stringify(brief.codemap)) } : {}),
     ...(brief.timelineData ? { timeline_data: JSON.parse(JSON.stringify(brief.timelineData)) } : {}),
+    ...(brief.depth ? { depth: brief.depth } : {}),
   };
   const { error } = await supabase
     .from("briefs")
@@ -348,6 +349,7 @@ export async function savePublicBrief(
     ...(brief.timelineData ? { timeline_data: JSON.parse(JSON.stringify(brief.timelineData)) } : {}),
     ...(brief.diagrams ? { diagrams: JSON.parse(JSON.stringify(brief.diagrams)) } : {}),
     ...(brief.overviewExplanation ? { overview_explanation: JSON.parse(JSON.stringify(brief.overviewExplanation)) } : {}),
+    ...(brief.depth ? { depth: brief.depth } : {}),
   };
   const { error } = await supabase
     .from("public_briefs")
@@ -370,6 +372,9 @@ function publicRowToBrief(row: Record<string, unknown>): ProjectBrief {
     ...(row.timeline_data ? { timelineData: row.timeline_data as unknown as ProjectBrief["timelineData"] } : {}),
     ...(row.diagrams ? { diagrams: row.diagrams as unknown as ProjectBrief["diagrams"] } : {}),
     ...(row.overview_explanation ? { overviewExplanation: row.overview_explanation as unknown as ProjectBrief["overviewExplanation"] } : {}),
+    ...(row.depth === "deep" || row.depth === "standard"
+      ? { depth: row.depth as ProjectBrief["depth"] }
+      : {}),
   };
 }
 
@@ -388,5 +393,8 @@ function rowToBrief(row: Record<string, unknown>): ProjectBrief {
     entrypoints: row.entrypoints as unknown as ProjectBrief["entrypoints"],
     ...(row.codemap ? { codemap: row.codemap as unknown as ProjectBrief["codemap"] } : {}),
     ...(row.timeline_data ? { timelineData: row.timeline_data as unknown as ProjectBrief["timelineData"] } : {}),
+    ...(row.depth === "deep" || row.depth === "standard"
+      ? { depth: row.depth as ProjectBrief["depth"] }
+      : {}),
   };
 }

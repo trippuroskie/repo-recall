@@ -176,6 +176,9 @@ export interface ProjectBrief {
 
   // Enriched timeline data for visualizations
   timelineData?: TimelineData;
+
+  // Analysis depth used to produce this brief
+  depth?: "standard" | "deep";
 }
 
 export interface ChatMessage {

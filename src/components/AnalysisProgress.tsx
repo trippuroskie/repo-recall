@@ -13,6 +13,8 @@ interface ProgressEvent {
   phase?: string;
   current?: number;
   total?: number;
+  cycle?: number;
+  totalCycles?: number;
   brief?: ProjectBrief;
   message?: string;
 }
@@ -41,17 +43,21 @@ function IconLogo() {
 export function AnalysisProgress({
   repoUrl,
   token,
+  depth,
   onComplete,
   onError,
 }: {
   repoUrl: string;
   token?: string;
+  depth?: "standard" | "deep";
   onComplete: (brief: ProjectBrief) => void;
   onError: (message: string) => void;
 }) {
   const [phase, setPhase] = useState("Connecting...");
   const [progress, setProgress] = useState(0);
   const [total, setTotal] = useState(3);
+  const [cycle, setCycle] = useState<number | undefined>(undefined);
+  const [totalCycles, setTotalCycles] = useState<number | undefined>(undefined);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filesRead, setFilesRead] = useState(0);
   const logEndRef = useRef<HTMLDivElement>(null);
@@ -72,6 +78,7 @@ export function AnalysisProgress({
           body: JSON.stringify({
             repoUrl: repoUrl.trim(),
             token: token?.trim() || undefined,
+            depth: depth === "deep" ? "deep" : undefined,
           }),
           signal: controller.signal,
         });
@@ -158,6 +165,8 @@ export function AnalysisProgress({
           setPhase(event.phase || "Working...");
           setProgress(event.current || 0);
           setTotal(event.total || 3);
+          if (typeof event.cycle === "number") setCycle(event.cycle);
+          if (typeof event.totalCycles === "number") setTotalCycles(event.totalCycles);
           break;
 
         case "step":
@@ -241,6 +250,11 @@ export function AnalysisProgress({
 
         {/* Phase label */}
         <div className="text-center mb-3">
+          {depth === "deep" && (
+            <p className="text-[10px] uppercase tracking-wider text-accent font-medium mb-1">
+              Deep Research {cycle && totalCycles ? `· Cycle ${cycle} of ${totalCycles}` : ""}
+            </p>
+          )}
           <p className="text-sm font-medium text-foreground">{phase}</p>
           <p className="text-xs text-foreground-secondary mt-1">
             {filesRead > 0 && `${filesRead} file${filesRead === 1 ? "" : "s"} explored`}

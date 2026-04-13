@@ -244,6 +244,111 @@ Output a valid JSON object with this structure. Optional keys may be omitted whe
 
 Output ONLY the JSON object, no markdown fences or other text.`;
 
+/**
+ * Prompt for gap analysis between exploration cycles in deep research mode.
+ * The LLM receives the cycle-1 brief + exploration findings and must return a
+ * JSON object of shape `{ gaps: GapTarget[] }` describing targeted
+ * investigation plans for cycle 2.
+ */
+export const GAP_ANALYSIS_PROMPT = `You previously analyzed a codebase and produced a draft brief. Your job now is to identify the MOST important areas where the analysis is shallow, missing, or untested.
+
+Return STRICT JSON (no markdown fences, no prose) of this shape:
+
+{
+  "gaps": [
+    {
+      "area": "short name (e.g. 'Authentication & Session Handling')",
+      "missing": "1-2 sentences describing exactly what's missing or unclear in the current analysis",
+      "investigationPlan": "specific files, directories, or semantic-search queries to run",
+      "questions": ["concrete question 1", "concrete question 2", "concrete question 3"]
+    }
+  ]
+}
+
+Rules:
+- Produce at most 5 gaps, ordered by importance
+- Each gap must be ACTIONABLE in a second exploration pass (~20 iterations, ~80 API calls)
+- Prefer gaps about real code: unexplored modules, unclear data flows, untraced business logic, missing integration details, auth/authz details, persistence/state model details
+- Do NOT list things that are clearly already covered
+- Do NOT invent functionality that doesn't exist
+- Each question should be specific enough that reading 1-3 files would answer it
+- Output ONLY the JSON object`;
+
+/**
+ * Builds the cycle-2 exploration system prompt for deep research mode.
+ * Reuses the repo context but swaps the strategy section to focus on gap-target
+ * investigation. Findings from cycle 1 are included as context.
+ */
+export function buildCycle2ExplorationPrompt(
+  repoInfo: RepoInfo,
+  fileTree: FileNode[],
+  readme: string | null,
+  packageJson: string | null,
+  cycle1Summary: string,
+  gaps: GapTarget[]
+): string {
+  const treeSummary = buildTreeSummary(fileTree);
+  const gapsBlock = gaps
+    .map((g, i) => {
+      const qs = g.questions.map((q) => `  - ${q}`).join("\n");
+      return `### Gap ${i + 1}: ${g.area}
+**Missing:** ${g.missing}
+**Investigation plan:** ${g.investigationPlan}
+**Questions to answer:**
+${qs}`;
+    })
+    .join("\n\n");
+
+  const cycle1Excerpt = cycle1Summary.length > 6000
+    ? cycle1Summary.slice(0, 6000) + "\n...(truncated)"
+    : cycle1Summary;
+
+  return `You are an expert code analyst doing a SECOND exploration pass on **${repoInfo.fullName}**.
+
+You previously analyzed this repository and produced initial findings. A gap analysis has identified specific underexplored areas that need deeper investigation. Your job in this cycle is to CLOSE THOSE GAPS — do not re-explore what you already covered well.
+
+## Repository Info
+- Language: ${repoInfo.language || "Unknown"}
+- Description: ${repoInfo.description || "No description"}
+
+## File Tree
+\`\`\`
+${treeSummary}
+\`\`\`
+${readme ? `\n## README (excerpt)\n${readme.slice(0, 1500)}${readme.length > 1500 ? "\n...(truncated)" : ""}` : ""}
+${packageJson ? `\n## package.json\n\`\`\`json\n${packageJson.slice(0, 2000)}${packageJson.length > 2000 ? "\n...(truncated)" : ""}\n\`\`\`` : ""}
+
+## Prior Findings (Cycle 1)
+${cycle1Excerpt}
+
+## Targeted Investigation Plan
+You must now focus on these specific gaps. Budget: ~20 tool-call iterations, ~80 GitHub API calls.
+
+${gapsBlock}
+
+## Strategy for Cycle 2
+- Read files in the investigation plan directly — do not re-verify architecture you already understand
+- Use \`searchSemantic\` aggressively to find code relevant to each gap's questions (it does NOT count against the API budget)
+- Use \`searchCode\` for exact identifiers mentioned in the gaps (function names, class names, env vars)
+- Answer each gap's questions concretely, citing real file paths and line numbers
+- Skip gaps whose answers become obvious from other findings; don't waste budget
+
+## Output
+When you finish, respond with a final text message organized by gap. For each gap:
+- Restate the area
+- Answer each of its questions concretely, citing file paths (and line numbers when relevant)
+- Note anything surprising or incorrect in the prior findings
+
+Do NOT call any more tools once you are ready to summarize.`;
+}
+
+export interface GapTarget {
+  area: string;
+  missing: string;
+  investigationPlan: string;
+  questions: string[];
+}
+
 function buildTreeSummary(files: FileNode[]): string {
   // Show a compact tree, limiting to reasonable depth
   const dirs = new Set<string>();
