@@ -15,6 +15,8 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
   const systemChart = brief.diagrams?.architecture || buildArchitectureChart(brief);
   const stackChart = brief.diagrams?.stack || buildStackLayersChart(brief);
   const depChart = buildDependencyChart(brief);
+  const dataFlowChart = brief.diagrams?.dataFlow;
+  const erChart = brief.diagrams?.entityRelationship;
 
   const depCount = Object.keys(architecture.dependencies).length;
   const devDepsApprox = Object.entries(architecture.dependencies).filter(
@@ -46,7 +48,7 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
       )}
 
       {/* Charts row */}
-      {(systemChart || stackChart || depChart) && (
+      {(systemChart || stackChart || depChart || dataFlowChart || erChart) && (
         <div className="mb-8 flex flex-col gap-4">
           {/* Stack layers chart */}
           {stackChart && (
@@ -55,6 +57,16 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
                 Stack Layers
               </h3>
               <MermaidChart chart={stackChart} />
+            </div>
+          )}
+
+          {/* Data flow chart */}
+          {dataFlowChart && (
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
+                Data Flow
+              </h3>
+              <MermaidChart chart={dataFlowChart} />
             </div>
           )}
 
@@ -77,6 +89,16 @@ export function ArchitectureSection({ brief }: { brief: ProjectBrief }) {
               </div>
             )}
           </div>
+
+          {/* Entity relationship diagram */}
+          {erChart && (
+            <div>
+              <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground-secondary uppercase tracking-wider mb-3">
+                Data Models
+              </h3>
+              <MermaidChart chart={erChart} />
+            </div>
+          )}
         </div>
       )}
 

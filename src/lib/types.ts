@@ -160,6 +160,8 @@ export interface ProjectBrief {
     overview?: string;
     architecture?: string;
     stack?: string;
+    dataFlow?: string;
+    entityRelationship?: string;
   };
 
   // Structured flow explanation for the overview section
