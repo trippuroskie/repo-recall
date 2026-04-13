@@ -5,6 +5,8 @@ import { requireAuth } from "@/lib/auth";
 import { checkPlanLimits } from "@/lib/plans";
 import { fetchFileContent } from "@/lib/github";
 import { checkRateLimit, rateLimitResponse } from "@/lib/rate-limit";
+import { createServiceClient } from "@/lib/supabase/server";
+import { searchEmbeddingsByRepo, type RepoSearchResult } from "@/lib/agent/vectorSearch";
 import type { ChatMessage, ProjectBrief } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
@@ -84,6 +86,38 @@ export async function POST(request: NextRequest) {
         let fullContent = "";
 
         try {
+          // --- Phase 0: RAG retrieval from repo_embeddings (if cached) ---
+          // Pull semantically-relevant chunks before falling back to the
+          // path-heuristic file selector. Skipped silently when the brief was
+          // produced before commit_sha persistence shipped, or when the repo
+          // has no embeddings cached for that commit.
+          let ragChunks: RepoSearchResult[] = [];
+          if (brief.commitSha) {
+            enqueueTrace(streamController, encoder, "rag_retrieval", "started", "Searching code embeddings...");
+            try {
+              const supabase = await createServiceClient();
+              ragChunks = await searchEmbeddingsByRepo({
+                supabase,
+                repoSlug: brief.repoInfo.fullName,
+                commitSha: brief.commitSha,
+                query: userQuery,
+                topK: isDeep ? 8 : 5,
+              });
+            } catch (err) {
+              console.warn("[chat] RAG retrieval failed:", err);
+            }
+            enqueueTrace(
+              streamController,
+              encoder,
+              "rag_retrieval",
+              "done",
+              ragChunks.length > 0
+                ? `Retrieved ${ragChunks.length} code chunks`
+                : "No cached embeddings for this repo",
+              { chunks: ragChunks.map((c) => ({ path: c.path, startLine: c.startLine, endLine: c.endLine, score: c.score })) }
+            );
+          }
+
           // --- Phase 1: File selection & fetching with trace events ---
           enqueueTrace(streamController, encoder, "select_files", "started", "Analyzing query...");
           const relevantFiles = selectRelevantFiles(brief, userQuery, isDeep ? 10 : 5);
@@ -121,7 +155,15 @@ export async function POST(request: NextRequest) {
           enqueueTrace(streamController, encoder, "build_context", "done", "Context ready");
           enqueueTrace(streamController, encoder, "thinking", "started", "Generating response...");
 
-          const systemMessage = `${CHAT_SYSTEM_PROMPT}\n\n---\n\nHere is the analyzed brief for the repository:\n\n${briefContext}${fileContext}`;
+          let ragContext = "";
+          if (ragChunks.length > 0) {
+            ragContext = "\n\n---\n\n## Semantically Retrieved Code Chunks\nThese were pulled from a vector index of the repo at the analyzed commit. Each header is the canonical anchor — cite chunks using `[[file:path:line]]` syntax (e.g., `[[file:src/lib/foo.ts:42]]`).\n\n";
+            ragContext += ragChunks
+              .map((c) => `### ${c.path}:${c.startLine}-${c.endLine} (similarity ${c.score})\n\`\`\`\n${c.content}\n\`\`\``)
+              .join("\n\n");
+          }
+
+          const systemMessage = `${CHAT_SYSTEM_PROMPT}\n\n---\n\nHere is the analyzed brief for the repository:\n\n${briefContext}${ragContext}${fileContext}`;
 
           // --- Phase 2: Call OpenRouter and stream AI content ---
           const abortController = new AbortController();
