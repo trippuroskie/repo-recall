@@ -70,19 +70,24 @@ export class EmbeddingStore {
     const newDocs = docs.filter((d) => !this.indexedPaths.has(d.path));
     if (newDocs.length === 0) return;
 
-    // Chunk all documents
+    // Chunk all documents (do NOT mark paths indexed yet — defer until embeds succeed)
     const allChunks: { text: string; metadata: ChunkMetadata }[] = [];
     for (const doc of newDocs) {
       const baseLineOffset = doc.startLine ?? 1;
       const chunks = chunkCode(doc.content, doc.path, baseLineOffset);
       allChunks.push(...chunks);
-      this.indexedPaths.add(doc.path);
     }
 
-    if (allChunks.length === 0) return;
+    if (allChunks.length === 0) {
+      // Empty/unchunkable files are still considered indexed to avoid retrying them.
+      for (const doc of newDocs) this.indexedPaths.add(doc.path);
+      return;
+    }
 
-    // Embed in batches of 96
+    // Embed in batches of 96. Accumulate into a local buffer so a mid-run failure
+    // leaves the store (and indexedPaths) untouched, allowing a later retry.
     const BATCH_SIZE = 96;
+    const embedded: StoredChunk[] = [];
     for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
       const batch = allChunks.slice(i, i + BATCH_SIZE);
       const texts = batch.map((c) => c.text);
@@ -90,13 +95,17 @@ export class EmbeddingStore {
       const data = await this.embed(texts);
 
       for (let j = 0; j < batch.length; j++) {
-        this.chunks.push({
+        embedded.push({
           embedding: data[j].embedding,
           metadata: batch[j].metadata,
           content: batch[j].text,
         });
       }
     }
+
+    // Commit: only mark paths as indexed after all embeddings succeeded.
+    this.chunks.push(...embedded);
+    for (const doc of newDocs) this.indexedPaths.add(doc.path);
   }
 
   /**
@@ -241,13 +250,21 @@ function chunkByBoundaries(
   const chunks: { text: string; metadata: ChunkMetadata }[] = [];
   const maxChunkLines = MAX_TOKENS_PER_CHUNK; // rough: 1 line ≈ 1-2 tokens avg for code
 
-  for (let i = 0; i < boundaries.length; i++) {
-    const start = boundaries[i];
-    const end = i + 1 < boundaries.length ? boundaries[i + 1] : lines.length;
-    let chunkLines = lines.slice(start, end);
+  // Track a deferred start for small boundary chunks so they get merged forward
+  // into the next boundary instead of being discarded.
+  let pendingStart: number | null = null;
 
-    // If chunk is too small, merge with next boundary
-    if (chunkLines.length < 5 && i + 1 < boundaries.length) continue;
+  for (let i = 0; i < boundaries.length; i++) {
+    const start: number = pendingStart !== null ? pendingStart : boundaries[i];
+    const end = i + 1 < boundaries.length ? boundaries[i + 1] : lines.length;
+    const chunkLines = lines.slice(start, end);
+
+    // If chunk is too small, carry it forward to merge with the next boundary.
+    if (chunkLines.length < 5 && i + 1 < boundaries.length) {
+      pendingStart = start;
+      continue;
+    }
+    pendingStart = null;
 
     // If chunk is too large, sub-chunk by size
     if (chunkLines.length > maxChunkLines) {
