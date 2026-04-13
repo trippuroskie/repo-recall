@@ -56,7 +56,11 @@ interface OrchestratorConfig {
 const MAX_ITERATIONS = 35;
 const CYCLE2_MAX_ITERATIONS = 20;
 const CYCLE2_EXTRA_BUDGET = 80;
-const DEEP_HARD_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+// Deep-mode deadline must fit inside the analyze route's `maxDuration = 300` on
+// Vercel. We leave ~30s of headroom for synthesis + saveBrief after the last
+// cycle so we don't get killed mid-write. If the route limit ever changes, bump
+// this alongside it.
+const DEEP_HARD_TIMEOUT_MS = 270 * 1000;
 const EXPLORATION_MODEL = process.env.AGENT_EXPLORATION_MODEL || "google/gemini-3-flash-preview";
 const SYNTHESIS_MODEL = process.env.AGENT_SYNTHESIS_MODEL || "google/gemini-3.1-pro-preview";
 
@@ -214,6 +218,7 @@ async function runDeepAnalysis(config: OrchestratorConfig): Promise<ProjectBrief
 
   // --- Cycle 2: targeted deep dive ---
   let cycle2Summary = "";
+  let cycle2Ran = false;
   if (gaps.length > 0 && Date.now() < deadline) {
     emit({
       type: "progress",
@@ -259,15 +264,20 @@ async function runDeepAnalysis(config: OrchestratorConfig): Promise<ProjectBrief
 
     cycle2Summary = cycle2.explorationSummary;
     allToolResults.push(...cycle2.toolResults);
+    cycle2Ran = true;
   }
 
   // --- Final Synthesis ---
+  // Only report cycle: 2 when cycle 2 actually executed. If it was skipped
+  // (gap analysis failed, no gaps, or deadline reached), the deep run
+  // gracefully degraded to a single cycle and the UI should reflect that.
+  const finalCycle = cycle2Ran ? 2 : 1;
   emit({
     type: "progress",
     phase: "Synthesizing findings",
     current: 4,
     total: 4,
-    cycle: 2,
+    cycle: finalCycle,
     totalCycles: 2,
   });
 
@@ -289,14 +299,20 @@ async function runDeepAnalysis(config: OrchestratorConfig): Promise<ProjectBrief
 
   brief.depth = "deep";
 
-  await finalizeTimeline(brief, prs, commits, emit);
+  await finalizeTimeline(brief, prs, commits, emit, {
+    phase: "Generating timeline insights",
+    current: 3.5,
+    total: 4,
+    cycle: finalCycle,
+    totalCycles: 2,
+  });
 
   emit({
     type: "progress",
     phase: "Complete",
     current: 4,
     total: 4,
-    cycle: 2,
+    cycle: finalCycle,
     totalCycles: 2,
   });
 
@@ -555,9 +571,16 @@ async function finalizeTimeline(
   brief: ProjectBrief,
   prs: PRSummary[],
   commits: CommitSummary[],
-  emit: ProgressCallback
+  emit: ProgressCallback,
+  progress: {
+    phase: string;
+    current: number;
+    total: number;
+    cycle?: number;
+    totalCycles?: number;
+  } = { phase: "Generating timeline insights", current: 2.5, total: 3 }
 ): Promise<void> {
-  emit({ type: "progress", phase: "Generating timeline insights", current: 2.5, total: 3 });
+  emit({ type: "progress", ...progress });
 
   const mergedPRs = prs.filter((pr) => pr.mergedAt);
   const timelineData: TimelineData = {

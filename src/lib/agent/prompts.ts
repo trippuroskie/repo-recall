@@ -247,7 +247,8 @@ Output ONLY the JSON object, no markdown fences or other text.`;
 /**
  * Prompt for gap analysis between exploration cycles in deep research mode.
  * The LLM receives the cycle-1 brief + exploration findings and must return a
- * JSON array of targeted investigation plans for cycle 2.
+ * JSON object of shape `{ gaps: GapTarget[] }` describing targeted
+ * investigation plans for cycle 2.
  */
 export const GAP_ANALYSIS_PROMPT = `You previously analyzed a codebase and produced a draft brief. Your job now is to identify the MOST important areas where the analysis is shallow, missing, or untested.
 
