@@ -68,6 +68,7 @@ export interface Database {
           codemap: Json | null;
           timeline_data: Json | null;
           depth: string | null;
+          commit_sha: string | null;
           generated_at: string;
           created_at: string;
           updated_at: string;
@@ -86,6 +87,7 @@ export interface Database {
           codemap?: Json | null;
           timeline_data?: Json | null;
           depth?: string | null;
+          commit_sha?: string | null;
           generated_at: string;
           created_at?: string;
           updated_at?: string;
@@ -104,6 +106,7 @@ export interface Database {
           codemap?: Json | null;
           timeline_data?: Json | null;
           depth?: string | null;
+          commit_sha?: string | null;
           generated_at?: string;
           updated_at?: string;
         };
@@ -251,6 +254,7 @@ export interface Database {
           diagrams: Json | null;
           overview_explanation: Json | null;
           depth: string | null;
+          commit_sha: string | null;
           stars: number;
           language: string | null;
           topics: string[];
@@ -275,6 +279,7 @@ export interface Database {
           diagrams?: Json | null;
           overview_explanation?: Json | null;
           depth?: string | null;
+          commit_sha?: string | null;
           stars?: number;
           language?: string | null;
           topics?: string[];
@@ -299,6 +304,7 @@ export interface Database {
           diagrams?: Json | null;
           overview_explanation?: Json | null;
           depth?: string | null;
+          commit_sha?: string | null;
           stars?: number;
           language?: string | null;
           topics?: string[];
@@ -311,7 +317,24 @@ export interface Database {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      match_repo_embeddings: {
+        Args: {
+          query_embedding: number[];
+          repo: string;
+          sha: string;
+          match_count?: number;
+        };
+        Returns: {
+          path: string;
+          start_line: number;
+          end_line: number;
+          snippet: string;
+          content: string;
+          similarity: number;
+        }[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

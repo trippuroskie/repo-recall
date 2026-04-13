@@ -34,6 +34,7 @@ export async function saveBrief(
     ...(brief.codemap ? { codemap: JSON.parse(JSON.stringify(brief.codemap)) } : {}),
     ...(brief.timelineData ? { timeline_data: JSON.parse(JSON.stringify(brief.timelineData)) } : {}),
     ...(brief.depth ? { depth: brief.depth } : {}),
+    ...(brief.commitSha ? { commit_sha: brief.commitSha } : {}),
   };
   const { error } = await supabase
     .from("briefs")
@@ -350,6 +351,7 @@ export async function savePublicBrief(
     ...(brief.diagrams ? { diagrams: JSON.parse(JSON.stringify(brief.diagrams)) } : {}),
     ...(brief.overviewExplanation ? { overview_explanation: JSON.parse(JSON.stringify(brief.overviewExplanation)) } : {}),
     ...(brief.depth ? { depth: brief.depth } : {}),
+    ...(brief.commitSha ? { commit_sha: brief.commitSha } : {}),
   };
   const { error } = await supabase
     .from("public_briefs")
@@ -375,6 +377,7 @@ function publicRowToBrief(row: Record<string, unknown>): ProjectBrief {
     ...(row.depth === "deep" || row.depth === "standard"
       ? { depth: row.depth as ProjectBrief["depth"] }
       : {}),
+    ...(typeof row.commit_sha === "string" ? { commitSha: row.commit_sha } : {}),
   };
 }
 
@@ -396,5 +399,6 @@ function rowToBrief(row: Record<string, unknown>): ProjectBrief {
     ...(row.depth === "deep" || row.depth === "standard"
       ? { depth: row.depth as ProjectBrief["depth"] }
       : {}),
+    ...(typeof row.commit_sha === "string" ? { commitSha: row.commit_sha } : {}),
   };
 }

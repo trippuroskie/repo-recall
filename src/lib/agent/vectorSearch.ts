@@ -513,6 +513,98 @@ function parseVectorString(s: string | null | undefined): number[] | null {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// Query-only helper for callers (chat, brief search) that don't want to
+// hydrate a full in-memory store. Embeds the query via OpenRouter, then
+// dispatches a server-side cosine search through the `match_repo_embeddings`
+// RPC (migration 010). Returns [] when no embeddings exist for the
+// (repo, commit) — callers should treat that as "no RAG context".
+// ---------------------------------------------------------------------------
+
+export interface SearchByRepoOptions {
+  supabase: EmbeddingsClient;
+  repoSlug: string;
+  commitSha: string;
+  query: string;
+  topK?: number;
+  apiKey?: string;
+  model?: string;
+  dimensions?: number;
+}
+
+export interface RepoSearchResult extends SearchResult {
+  snippet: string;
+}
+
+export async function searchEmbeddingsByRepo(
+  opts: SearchByRepoOptions
+): Promise<RepoSearchResult[]> {
+  const apiKey = opts.apiKey || process.env.OPENROUTER_API_KEY || "";
+  if (!apiKey) return [];
+  const model = opts.model || DEFAULT_MODEL;
+  const dimensions = opts.dimensions || DEFAULT_DIMENSIONS;
+  const topK = opts.topK ?? 5;
+
+  // The pgvector column is fixed at vector(256). If the caller asks for a
+  // different dimension we'd be comparing against a different vector space;
+  // bail rather than return garbage.
+  if (dimensions !== DEFAULT_DIMENSIONS) {
+    console.warn(
+      `[vectorSearch] searchEmbeddingsByRepo: dimensions=${dimensions} does not match pgvector column width (${DEFAULT_DIMENSIONS}); skipping.`
+    );
+    return [];
+  }
+
+  let queryEmbedding: number[];
+  try {
+    const response = await fetch(OPENROUTER_EMBEDDINGS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://reporecall.dev",
+        "X-Title": "RepoRecall RAG",
+      },
+      body: JSON.stringify({ model, input: [opts.query], dimensions }),
+    });
+    if (!response.ok) {
+      console.warn("[vectorSearch] query embed failed:", await response.text());
+      return [];
+    }
+    const result = await response.json();
+    queryEmbedding = result.data?.[0]?.embedding;
+    if (!Array.isArray(queryEmbedding)) return [];
+  } catch (err) {
+    console.warn("[vectorSearch] query embed threw:", err);
+    return [];
+  }
+
+  try {
+    const { data, error } = await opts.supabase.rpc("match_repo_embeddings", {
+      query_embedding: queryEmbedding,
+      repo: opts.repoSlug,
+      sha: opts.commitSha,
+      match_count: topK,
+    });
+    if (error) {
+      console.warn("[vectorSearch] match_repo_embeddings failed:", error.message);
+      return [];
+    }
+    if (!data) return [];
+    return data.map((row) => ({
+      path: row.path,
+      startLine: row.start_line,
+      endLine: row.end_line,
+      score: Math.round(row.similarity * 1000) / 1000,
+      content: row.content,
+      snippet: row.snippet,
+    }));
+  } catch (err) {
+    console.warn("[vectorSearch] match_repo_embeddings threw:", err);
+    return [];
+  }
+}
+
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;
   let normA = 0;
