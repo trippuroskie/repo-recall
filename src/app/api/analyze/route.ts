@@ -35,7 +35,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { repoUrl, token, force } = await request.json();
+    const { repoUrl, token, force, depth: depthRaw } = await request.json();
+    const requestedDepth: "standard" | "deep" = depthRaw === "deep" ? "deep" : "standard";
+
+    // Gate deep mode behind Pro plan
+    if (requestedDepth === "deep" && limits.plan !== "pro") {
+      return NextResponse.json(
+        {
+          error: "Deep Research mode requires a Pro plan. Upgrade to run multi-cycle analyses.",
+          code: "PLAN_LIMIT_EXCEEDED",
+        },
+        { status: 403 }
+      );
+    }
 
     if (!repoUrl) {
       return NextResponse.json(
@@ -54,10 +66,13 @@ export async function POST(request: NextRequest) {
 
     const { owner, repo } = parsed;
 
-    // Check for existing brief (skip if user explicitly wants to re-analyze)
+    // Check for existing brief (skip if user explicitly wants to re-analyze,
+    // or if they requested deep mode and the existing brief was only standard)
     if (!force) {
       const existing = await getBriefByRepo(user.id, `${owner}/${repo}`);
-      if (existing) {
+      const wantsDeepUpgrade =
+        requestedDepth === "deep" && existing?.depth !== "deep";
+      if (existing && !wantsDeepUpgrade) {
         return NextResponse.json(
           {
             existing: true,
@@ -166,6 +181,7 @@ export async function POST(request: NextRequest) {
               readme,
               token: authToken,
               onProgress: send,
+              depth: requestedDepth,
             });
           } catch (agentError) {
             console.error("Agentic analysis failed, falling back to static:", agentError);

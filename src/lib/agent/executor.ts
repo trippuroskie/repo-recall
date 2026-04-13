@@ -93,6 +93,11 @@ export class ToolExecutor {
     return this.maxApiCalls - this.apiCalls;
   }
 
+  /** Extend the max API-call budget. Used by deep-research mode between cycles. */
+  extendBudget(additional: number): void {
+    if (additional > 0) this.maxApiCalls += additional;
+  }
+
   async execute(toolCall: AgentToolCall): Promise<ToolResult> {
     switch (toolCall.name) {
       case "readFile":

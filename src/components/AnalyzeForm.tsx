@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Loader2, GitBranch, Lock } from "lucide-react";
+import { ArrowRight, Loader2, GitBranch, Lock, Sparkles } from "lucide-react";
 import { EXAMPLE_REPOS } from "@/lib/constants";
 
 export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
@@ -11,7 +11,22 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
   const [showToken, setShowToken] = useState(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [deep, setDeep] = useState(false);
+  const [isPro, setIsPro] = useState(false);
   const router = useRouter();
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/plan")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data && data.plan === "pro") setIsPro(true);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -20,6 +35,7 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
     setAnalyzing(true);
     const params = new URLSearchParams({ repo: repoUrl.trim() });
     if (token.trim()) params.set("token", token.trim());
+    if (deep && isPro) params.set("depth", "deep");
     router.push(`/analyze?${params.toString()}`);
   }
 
@@ -60,7 +76,7 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
             </button>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
             <button
               type="button"
               onClick={() => setShowToken(!showToken)}
@@ -69,6 +85,30 @@ export function AnalyzeForm({ compact = false }: { compact?: boolean }) {
               <Lock size={12} />
               {showToken ? "Hide" : "Private repo? Add token"}
             </button>
+
+            <label
+              className={`flex items-center gap-1.5 text-xs transition-colors ${
+                isPro
+                  ? "text-foreground-secondary hover:text-foreground cursor-pointer"
+                  : "text-foreground-secondary/50 cursor-not-allowed"
+              }`}
+              title={
+                isPro
+                  ? "Deep Research runs two exploration cycles with gap analysis — richer briefs, ~2-3x cost."
+                  : "Deep Research is available on the Pro plan."
+              }
+            >
+              <input
+                type="checkbox"
+                checked={deep && isPro}
+                disabled={!isPro || analyzing}
+                onChange={(e) => setDeep(e.target.checked)}
+                className="h-3 w-3 accent-foreground"
+              />
+              <Sparkles size={12} />
+              Deep Research
+              {!isPro && <span className="text-[10px] uppercase tracking-wide">Pro</span>}
+            </label>
           </div>
 
           {showToken && (

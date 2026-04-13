@@ -881,7 +881,7 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId, sidebarW
                     <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
                   </svg>
                 )}
-                {searchMode === "fast" ? "Fast" : "Deep"}
+                {searchMode === "fast" ? "Fast" : "Thinking"}
                 <ChevronDown size={11} style={{ opacity: 0.5 }} />
               </button>
               {modeDropdownOpen && (
@@ -947,8 +947,8 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId, sidebarW
                       <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
                     </svg>
                     <div style={{ textAlign: "left" }}>
-                      <div style={{ fontWeight: 500 }}>Deep</div>
-                      <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Thorough analysis, more files</div>
+                      <div style={{ fontWeight: 500 }}>Thinking</div>
+                      <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Stronger reasoning, more files</div>
                     </div>
                   </button>
                 </div>
@@ -1533,7 +1533,7 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId, sidebarW
                         <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
                       </svg>
                     )}
-                    {searchMode === "fast" ? "Fast" : "Deep"}
+                    {searchMode === "fast" ? "Fast" : "Thinking"}
                     <ChevronDown size={11} style={{ opacity: 0.5 }} />
                   </button>
                   {modeDropdownOpen && (
@@ -1599,8 +1599,8 @@ export function ChatPanel({ brief, onNavigateToBrief, initialSessionId, sidebarW
                           <circle cx="7" cy="7" r="1.5" stroke="currentColor" strokeWidth="1.2" />
                         </svg>
                         <div style={{ textAlign: "left" }}>
-                          <div style={{ fontWeight: 500 }}>Deep</div>
-                          <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Thorough analysis, more files</div>
+                          <div style={{ fontWeight: 500 }}>Thinking</div>
+                          <div style={{ fontSize: 11, color: "rgb(160,159,156)" }}>Stronger reasoning, more files</div>
                         </div>
                       </button>
                     </div>
