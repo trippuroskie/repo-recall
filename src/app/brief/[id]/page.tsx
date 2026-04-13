@@ -83,21 +83,14 @@ function BriefPage() {
     [router]
   );
 
-  const handleReanalyze = useCallback(async () => {
+  const handleReanalyze = useCallback(() => {
     if (!brief || reanalyzing) return;
     setReanalyzing(true);
-    try {
-      const res = await fetch("/api/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repoUrl: `${brief.repoInfo.owner}/${brief.repoInfo.name}` }),
-      });
-      if (!res.ok) throw new Error("Re-analysis failed");
-      const data = await res.json();
-      router.push(`/brief/${data.brief.id}`);
-    } catch {
-      setReanalyzing(false);
-    }
+    // Route through /analyze so the user sees streaming progress and the
+    // backend actually re-runs the agent (force=1 bypasses the cached-brief
+    // short-circuit in /api/analyze).
+    const repo = `${brief.repoInfo.owner}/${brief.repoInfo.name}`;
+    router.push(`/analyze?repo=${encodeURIComponent(repo)}&force=1`);
   }, [brief, reanalyzing, router]);
 
   const handleOpenChat = useCallback(
