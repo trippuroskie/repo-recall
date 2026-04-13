@@ -1,8 +1,19 @@
 // In-memory vector store for semantic code search during agentic exploration
 //
 // Uses OpenRouter to access text-embedding-3-small (256 dims) for embeddings
-// and brute-force cosine similarity for search. The store is per-analysis and
-// not persisted.
+// and brute-force cosine similarity for search.
+//
+// Optional pgvector persistence (Phase 6): when constructed with
+// { repoSlug, commitSha, supabase } the store loads previously-embedded
+// chunks for that (repo, commit) from Supabase on `loadFromDb()`, and
+// write-through-inserts any new chunks embedded during the run. Reruns at
+// the same commit then skip embedding entirely. Persistence failures degrade
+// gracefully — the in-memory store keeps working.
+
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "../supabase/types";
+
+type EmbeddingsClient = SupabaseClient<Database>;
 
 const DEFAULT_MODEL = "openai/text-embedding-3-small";
 const DEFAULT_DIMENSIONS = 256;
@@ -37,16 +48,107 @@ const CODE_BOUNDARY_RE =
 
 export class EmbeddingStore {
   private chunks: StoredChunk[] = [];
+  // Paths for which addDocuments has already been invoked this run. Used by
+  // isIndexed() to short-circuit redundant `addDocumentsBackground` calls from
+  // the tool executor. NOT populated by loadFromDb — partial cache coverage
+  // must not suppress re-embedding of the missing chunks (see indexedChunkKeys).
   private indexedPaths = new Set<string>();
+  // Per-chunk cache keys (`path:startLine`) for everything already in memory,
+  // including chunks hydrated from Supabase. Used by addDocuments to skip
+  // individual chunks whose embeddings we already have.
+  private indexedChunkKeys = new Set<string>();
   private apiKey: string;
   private model: string;
   private dimensions: number;
   private pendingEmbeds: Promise<void>[] = [];
 
-  constructor(opts?: { model?: string; dimensions?: number; apiKey?: string }) {
+  // Phase 6 persistence (optional). All three must be present for writes to fire.
+  private repoSlug?: string;
+  private commitSha?: string;
+  private supabase?: EmbeddingsClient;
+
+  constructor(opts?: {
+    model?: string;
+    dimensions?: number;
+    apiKey?: string;
+    repoSlug?: string;
+    commitSha?: string;
+    supabase?: EmbeddingsClient;
+  }) {
     this.model = opts?.model || DEFAULT_MODEL;
     this.dimensions = opts?.dimensions || DEFAULT_DIMENSIONS;
     this.apiKey = opts?.apiKey || process.env.OPENROUTER_API_KEY || "";
+    this.repoSlug = opts?.repoSlug;
+    this.commitSha = opts?.commitSha;
+    this.supabase = opts?.supabase;
+
+    // The pgvector column is fixed at vector(256) (migration 009). If a caller
+    // ever asks for different dimensions, disable persistence rather than
+    // write/read incompatible vectors into a column that would either reject
+    // them or corrupt the cache.
+    if (this.supabase && this.dimensions !== DEFAULT_DIMENSIONS) {
+      console.warn(
+        `[vectorSearch] Disabling persistence: dimensions=${this.dimensions} does not match pgvector column width (${DEFAULT_DIMENSIONS}).`
+      );
+      this.supabase = undefined;
+    }
+  }
+
+  /** Whether this store is wired up for pgvector persistence */
+  private get persistenceEnabled(): boolean {
+    return Boolean(this.supabase && this.repoSlug && this.commitSha);
+  }
+
+  /**
+   * Load previously-embedded chunks for (repoSlug, commitSha, model) from
+   * Supabase into memory. Scopes to the current `model` so a model change
+   * produces a fresh cache rather than mixing embedding spaces. Populates
+   * `indexedChunkKeys` (per-chunk) — NOT `indexedPaths`, so `addDocuments`
+   * still re-embeds any chunk of the same file that wasn't persisted last
+   * time. Returns the number of chunks loaded.
+   */
+  async loadFromDb(): Promise<number> {
+    if (!this.persistenceEnabled) return 0;
+
+    try {
+      const { data, error } = await this.supabase!
+        .from("repo_embeddings")
+        .select("path, start_line, end_line, snippet, content, embedding")
+        .eq("repo_slug", this.repoSlug!)
+        .eq("commit_sha", this.commitSha!)
+        .eq("model", this.model);
+
+      if (error) {
+        console.warn("[vectorSearch] loadFromDb failed:", error.message);
+        return 0;
+      }
+      if (!data || data.length === 0) return 0;
+
+      for (const row of data) {
+        // pgvector returns the embedding as number[] (via supabase-js) or
+        // occasionally as a string like "[0.1,0.2,...]" depending on driver.
+        const embedding = Array.isArray(row.embedding)
+          ? (row.embedding as number[])
+          : parseVectorString(row.embedding as unknown as string);
+        if (!embedding) continue;
+
+        this.chunks.push({
+          embedding,
+          content: row.content,
+          metadata: {
+            path: row.path,
+            startLine: row.start_line,
+            endLine: row.end_line,
+            snippet: row.snippet,
+          },
+        });
+        this.indexedChunkKeys.add(chunkKey(row.path, row.start_line));
+      }
+      return data.length;
+    } catch (err) {
+      console.warn("[vectorSearch] loadFromDb threw:", err);
+      return 0;
+    }
   }
 
   /** Number of chunks currently stored */
@@ -60,28 +162,43 @@ export class EmbeddingStore {
   }
 
   /**
-   * Add documents to the store. Chunks them code-aware, embeds, and stores.
-   * Skips files already indexed.
+   * Add documents to the store. Chunks them code-aware, embeds only the
+   * chunks we don't already have (from this run or a prior persisted run),
+   * and stores them.
    */
   async addDocuments(
     docs: { path: string; content: string; startLine?: number }[]
   ): Promise<void> {
-    // Filter out already-indexed paths
-    const newDocs = docs.filter((d) => !this.indexedPaths.has(d.path));
-    if (newDocs.length === 0) return;
+    if (docs.length === 0) return;
 
-    // Chunk all documents
+    // Chunk all documents, then filter at the chunk level so partial cache
+    // coverage doesn't suppress re-embedding of the missing chunks. We do NOT
+    // populate `indexedChunkKeys` / `indexedPaths` yet — if the embed call
+    // throws partway through, leaving optimistic markers would cause later
+    // reads to treat those chunks as cached and skip them forever.
     const allChunks: { text: string; metadata: ChunkMetadata }[] = [];
-    for (const doc of newDocs) {
+    const seenKeysThisCall = new Set<string>();
+    for (const doc of docs) {
       const baseLineOffset = doc.startLine ?? 1;
       const chunks = chunkCode(doc.content, doc.path, baseLineOffset);
-      allChunks.push(...chunks);
-      this.indexedPaths.add(doc.path);
+      for (const chunk of chunks) {
+        const key = chunkKey(chunk.metadata.path, chunk.metadata.startLine);
+        // Skip chunks we already have persisted, and dedupe within this call.
+        if (this.indexedChunkKeys.has(key) || seenKeysThisCall.has(key)) continue;
+        seenKeysThisCall.add(key);
+        allChunks.push(chunk);
+      }
     }
 
-    if (allChunks.length === 0) return;
+    if (allChunks.length === 0) {
+      // No chunks to embed — but record that addDocuments was invoked for these
+      // paths so isIndexed() can short-circuit repeat calls.
+      for (const doc of docs) this.indexedPaths.add(doc.path);
+      return;
+    }
 
-    // Embed in batches of 96
+    // Embed in batches of 96. Mark chunks as indexed only after the batch
+    // succeeds, so a mid-flight embed failure doesn't poison the cache.
     const BATCH_SIZE = 96;
     for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
       const batch = allChunks.slice(i, i + BATCH_SIZE);
@@ -89,13 +206,66 @@ export class EmbeddingStore {
 
       const data = await this.embed(texts);
 
+      const newlyStored: StoredChunk[] = [];
       for (let j = 0; j < batch.length; j++) {
-        this.chunks.push({
+        const stored: StoredChunk = {
           embedding: data[j].embedding,
           metadata: batch[j].metadata,
           content: batch[j].text,
-        });
+        };
+        this.chunks.push(stored);
+        this.indexedChunkKeys.add(
+          chunkKey(stored.metadata.path, stored.metadata.startLine)
+        );
+        newlyStored.push(stored);
       }
+
+      // Write-through to pgvector so reruns at this (repo, commit) skip embedding.
+      // Failures here are non-fatal — the in-memory store is the source of truth
+      // during the current analysis.
+      if (this.persistenceEnabled && newlyStored.length > 0) {
+        await this.persistChunks(newlyStored);
+      }
+    }
+
+    // All batches succeeded — now it's safe to mark the submitted paths as
+    // indexed so `isIndexed()` shortcuts redundant background calls.
+    for (const doc of docs) this.indexedPaths.add(doc.path);
+  }
+
+  /** Upsert stored chunks into Supabase. Swallows errors (non-fatal). */
+  private async persistChunks(chunks: StoredChunk[]): Promise<void> {
+    if (!this.persistenceEnabled) return;
+    try {
+      const rows = chunks.map((c) => ({
+        repo_slug: this.repoSlug!,
+        commit_sha: this.commitSha!,
+        path: c.metadata.path,
+        start_line: c.metadata.startLine,
+        end_line: c.metadata.endLine,
+        snippet: c.metadata.snippet,
+        content: c.content,
+        embedding: c.embedding,
+        model: this.model,
+      }));
+
+      // Upsert on the unique (repo_slug, commit_sha, path, start_line, model)
+      // key. Including `model` in the key means a model change writes new rows
+      // rather than colliding with a prior model's embeddings (which live in a
+      // different vector space). Re-entering the same chunk within a run is
+      // deduped via indexedChunkKeys before we ever get here, but
+      // ignoreDuplicates guards against concurrent writers.
+      const { error } = await this.supabase!
+        .from("repo_embeddings")
+        .upsert(rows, {
+          onConflict: "repo_slug,commit_sha,path,start_line,model",
+          ignoreDuplicates: true,
+        });
+      if (error) {
+        console.warn("[vectorSearch] persistChunks failed:", error.message);
+      }
+    } catch (err) {
+      console.warn("[vectorSearch] persistChunks threw:", err);
     }
   }
 
@@ -165,6 +335,7 @@ export class EmbeddingStore {
   clear(): void {
     this.chunks = [];
     this.indexedPaths.clear();
+    this.indexedChunkKeys.clear();
     this.pendingEmbeds = [];
   }
 
@@ -321,6 +492,26 @@ function chunkBySize(
 // ---------------------------------------------------------------------------
 // Math
 // ---------------------------------------------------------------------------
+
+/** Stable identity for a chunk within the store: path + start line. */
+function chunkKey(path: string, startLine: number): string {
+  return `${path}:${startLine}`;
+}
+
+/** Parse a pgvector string like "[0.1,0.2,...]" into number[]. */
+function parseVectorString(s: string | null | undefined): number[] | null {
+  if (!s || typeof s !== "string") return null;
+  const trimmed = s.replace(/^\[/, "").replace(/\]$/, "");
+  if (!trimmed) return null;
+  const parts = trimmed.split(",");
+  const out: number[] = new Array(parts.length);
+  for (let i = 0; i < parts.length; i++) {
+    const n = Number(parts[i]);
+    if (!Number.isFinite(n)) return null;
+    out[i] = n;
+  }
+  return out;
+}
 
 function cosineSimilarity(a: number[], b: number[]): number {
   let dot = 0;

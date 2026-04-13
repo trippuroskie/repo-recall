@@ -23,6 +23,7 @@ import {
 } from "./prompts";
 import { generateBrief } from "../analysis";
 import { EmbeddingStore } from "./vectorSearch";
+import { createServiceClient } from "../supabase/server";
 
 // Progress events emitted during analysis
 export type ProgressEvent =
@@ -86,6 +87,7 @@ async function runStandardAnalysis(config: OrchestratorConfig): Promise<ProjectB
     files,
     readme,
     packageJson,
+    commits,
     token,
     emit
   );
@@ -153,6 +155,7 @@ async function runDeepAnalysis(config: OrchestratorConfig): Promise<ProjectBrief
     files,
     readme,
     packageJson,
+    commits,
     token,
     emit
   );
@@ -610,33 +613,85 @@ async function createAndSeedEmbeddingStore(
   files: FileNode[],
   readme: string | null,
   packageJson: string | null,
+  commits: CommitSummary[],
   token: string | undefined,
   emit: ProgressCallback
 ): Promise<EmbeddingStore | undefined> {
   if (!process.env.OPENROUTER_API_KEY) return undefined;
 
-  let embeddingStore: EmbeddingStore | undefined = new EmbeddingStore();
+  // Phase 6: wire up pgvector persistence when we have a commit SHA to key on
+  // and Supabase service credentials available. If either is missing, fall
+  // back to the original in-memory-only behavior.
+  const commitSha = commits[0]?.sha;
+  const hasServiceCreds =
+    !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+  let supabase: Awaited<ReturnType<typeof createServiceClient>> | undefined;
+  if (commitSha && hasServiceCreds) {
+    try {
+      supabase = await createServiceClient();
+    } catch (err) {
+      console.warn("[orchestrator] Could not create Supabase service client:", err);
+    }
+  }
+
+  let embeddingStore: EmbeddingStore | undefined = new EmbeddingStore({
+    repoSlug: repoInfo.fullName,
+    commitSha,
+    supabase,
+  });
+
+  // Load any chunks previously embedded for this (repo, commit) so we skip
+  // re-embedding the same content on reruns.
+  let cachedCount = 0;
+  if (supabase && commitSha) {
+    try {
+      cachedCount = await embeddingStore.loadFromDb();
+    } catch (err) {
+      console.warn("[orchestrator] loadFromDb failed, continuing:", err);
+    }
+  }
 
   emit({
     type: "step",
     action: "seedIndex",
-    detail: "Indexing key files for semantic search",
+    detail:
+      cachedCount > 0
+        ? `Loaded ${cachedCount} cached chunks; indexing remaining key files`
+        : "Indexing key files for semantic search",
     status: "started",
   });
+  let seedFailed = false;
   try {
-    await seedEmbeddingStore(embeddingStore, repoInfo, files, readme, packageJson, token);
+    await seedEmbeddingStore(
+      embeddingStore,
+      repoInfo,
+      files,
+      readme,
+      packageJson,
+      commitSha,
+      token
+    );
   } catch (err) {
     console.warn(
-      "[orchestrator] Embedding store seeding failed, continuing without semantic search:",
+      "[orchestrator] Embedding store seeding failed, continuing with whatever we have:",
       err
     );
-    embeddingStore = undefined;
+    seedFailed = true;
+    // Discard the store only if we also have no cached chunks to fall back
+    // on — otherwise keep the loaded cache so semantic search still works
+    // against the previously-embedded slice of the repo.
+    if (embeddingStore.size === 0) {
+      embeddingStore = undefined;
+    }
   }
   if (embeddingStore) {
+    const suffix = cachedCount > 0 ? ` (${cachedCount} from cache)` : "";
     emit({
       type: "step",
       action: "seedIndex",
-      detail: `Indexed ${embeddingStore.size} chunks`,
+      detail: seedFailed
+        ? `Seeding partially failed; serving ${embeddingStore.size} chunks${suffix}`
+        : `Indexed ${embeddingStore.size} chunks${suffix}`,
       status: "done",
     });
   }
@@ -1058,6 +1113,7 @@ async function seedEmbeddingStore(
   files: FileNode[],
   readme: string | null,
   packageJson: string | null,
+  commitSha: string | undefined,
   token?: string
 ): Promise<void> {
   const docs: { path: string; content: string }[] = [];
@@ -1069,7 +1125,9 @@ async function seedEmbeddingStore(
   // Select up to 12 high-signal files from the tree
   const highSignalPaths = selectHighSignalFiles(files, 12);
 
-  // Fetch content for high-signal files via GitHub API
+  // Fetch content for high-signal files via GitHub API, pinned to the same
+  // commit SHA used as the persistence key. If commitSha is missing, we fall
+  // back to branch HEAD — accepted drift since there's no cache to taint.
   const { Octokit } = await import("@octokit/rest");
   const octokit = new Octokit({ auth: token || process.env.GITHUB_TOKEN });
 
@@ -1081,6 +1139,7 @@ async function seedEmbeddingStore(
           owner: repoInfo.owner,
           repo: repoInfo.name,
           path,
+          ...(commitSha ? { ref: commitSha } : {}),
         });
         if ("content" in data && data.content) {
           const content = Buffer.from(data.content, "base64").toString("utf-8");

@@ -193,6 +193,48 @@ export interface Database {
         };
         Relationships: [];
       };
+      repo_embeddings: {
+        Row: {
+          id: string;
+          repo_slug: string;
+          commit_sha: string;
+          path: string;
+          start_line: number;
+          end_line: number;
+          snippet: string;
+          content: string;
+          embedding: number[];
+          model: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          repo_slug: string;
+          commit_sha: string;
+          path: string;
+          start_line: number;
+          end_line: number;
+          snippet: string;
+          content: string;
+          embedding: number[];
+          model?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          repo_slug?: string;
+          commit_sha?: string;
+          path?: string;
+          start_line?: number;
+          end_line?: number;
+          snippet?: string;
+          content?: string;
+          embedding?: number[];
+          model?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       public_briefs: {
         Row: {
           id: string;
