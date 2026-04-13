@@ -27,14 +27,15 @@
 
 1. [Background & Motivation](#background--motivation)
 2. [Improvement Overview](#improvement-overview)
-3. [Phase 1: Semantic Search as an Agent Tool](#phase-1-semantic-search-as-an-agent-tool)
-4. [Phase 2: Mermaid Diagram Generation in Synthesis](#phase-2-mermaid-diagram-generation-in-synthesis)
-5. [Phase 3: Deep Research Mode](#phase-3-deep-research-mode)
-6. [Phase 4: Multi-Platform Support](#phase-4-multi-platform-support)
-7. [Phase 5: Local Clone Option for Heavy Analysis](#phase-5-local-clone-option-for-heavy-analysis)
-8. [File Map](#file-map)
-9. [Testing Strategy](#testing-strategy)
-10. [Risks & Mitigations](#risks--mitigations)
+3. Phase 1: Semantic Search as an Agent Tool — shipped
+4. Phase 2: Mermaid Diagram Generation in Synthesis — shipped
+5. Phase 3: Deep Research Mode — shipped
+6. Phase 4: Multi-Platform Support — deferred
+7. Phase 5: Local Clone Option for Heavy Analysis — deferred
+8. Phase 6: Persist Embeddings in pgvector — in progress
+9. [File Map](#file-map)
+10. [Testing Strategy](#testing-strategy)
+11. [Risks & Mitigations](#risks--mitigations)
 
 ---
 

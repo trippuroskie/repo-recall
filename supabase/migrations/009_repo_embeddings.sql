@@ -24,8 +24,12 @@ create table if not exists public.repo_embeddings (
   embedding vector(256) not null,
   model text not null default 'openai/text-embedding-3-small',
   created_at timestamptz not null default now(),
+  -- Model is part of the uniqueness key so swapping the embedding model
+  -- writes fresh rows instead of colliding with the prior model's
+  -- embeddings (which live in a different vector space and can't be
+  -- compared against a new query embedding).
   constraint repo_embeddings_unique_chunk
-    unique (repo_slug, commit_sha, path, start_line)
+    unique (repo_slug, commit_sha, path, start_line, model)
 );
 
 -- Fast lookup of all chunks for a given (repo, commit) when loading the store.

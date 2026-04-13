@@ -48,7 +48,15 @@ const CODE_BOUNDARY_RE =
 
 export class EmbeddingStore {
   private chunks: StoredChunk[] = [];
+  // Paths for which addDocuments has already been invoked this run. Used by
+  // isIndexed() to short-circuit redundant `addDocumentsBackground` calls from
+  // the tool executor. NOT populated by loadFromDb — partial cache coverage
+  // must not suppress re-embedding of the missing chunks (see indexedChunkKeys).
   private indexedPaths = new Set<string>();
+  // Per-chunk cache keys (`path:startLine`) for everything already in memory,
+  // including chunks hydrated from Supabase. Used by addDocuments to skip
+  // individual chunks whose embeddings we already have.
+  private indexedChunkKeys = new Set<string>();
   private apiKey: string;
   private model: string;
   private dimensions: number;
@@ -81,10 +89,12 @@ export class EmbeddingStore {
   }
 
   /**
-   * Load previously-embedded chunks for (repoSlug, commitSha) from Supabase.
-   * Marks their paths as indexed so `addDocuments` skips re-embedding.
-   * Returns the number of chunks loaded. Safe to call on a non-persistent
-   * store (returns 0).
+   * Load previously-embedded chunks for (repoSlug, commitSha, model) from
+   * Supabase into memory. Scopes to the current `model` so a model change
+   * produces a fresh cache rather than mixing embedding spaces. Populates
+   * `indexedChunkKeys` (per-chunk) — NOT `indexedPaths`, so `addDocuments`
+   * still re-embeds any chunk of the same file that wasn't persisted last
+   * time. Returns the number of chunks loaded.
    */
   async loadFromDb(): Promise<number> {
     if (!this.persistenceEnabled) return 0;
@@ -94,7 +104,8 @@ export class EmbeddingStore {
         .from("repo_embeddings")
         .select("path, start_line, end_line, snippet, content, embedding")
         .eq("repo_slug", this.repoSlug!)
-        .eq("commit_sha", this.commitSha!);
+        .eq("commit_sha", this.commitSha!)
+        .eq("model", this.model);
 
       if (error) {
         console.warn("[vectorSearch] loadFromDb failed:", error.message);
@@ -120,7 +131,7 @@ export class EmbeddingStore {
             snippet: row.snippet,
           },
         });
-        this.indexedPaths.add(row.path);
+        this.indexedChunkKeys.add(chunkKey(row.path, row.start_line));
       }
       return data.length;
     } catch (err) {
@@ -140,22 +151,27 @@ export class EmbeddingStore {
   }
 
   /**
-   * Add documents to the store. Chunks them code-aware, embeds, and stores.
-   * Skips files already indexed.
+   * Add documents to the store. Chunks them code-aware, embeds only the
+   * chunks we don't already have (from this run or a prior persisted run),
+   * and stores them.
    */
   async addDocuments(
     docs: { path: string; content: string; startLine?: number }[]
   ): Promise<void> {
-    // Filter out already-indexed paths
-    const newDocs = docs.filter((d) => !this.indexedPaths.has(d.path));
-    if (newDocs.length === 0) return;
+    if (docs.length === 0) return;
 
-    // Chunk all documents
+    // Chunk all documents, then filter at the chunk level so partial cache
+    // coverage doesn't suppress re-embedding of the missing chunks.
     const allChunks: { text: string; metadata: ChunkMetadata }[] = [];
-    for (const doc of newDocs) {
+    for (const doc of docs) {
       const baseLineOffset = doc.startLine ?? 1;
       const chunks = chunkCode(doc.content, doc.path, baseLineOffset);
-      allChunks.push(...chunks);
+      for (const chunk of chunks) {
+        const key = chunkKey(chunk.metadata.path, chunk.metadata.startLine);
+        if (this.indexedChunkKeys.has(key)) continue;
+        this.indexedChunkKeys.add(key);
+        allChunks.push(chunk);
+      }
       this.indexedPaths.add(doc.path);
     }
 
@@ -205,12 +221,16 @@ export class EmbeddingStore {
         model: this.model,
       }));
 
-      // Upsert on the unique (repo_slug, commit_sha, path, start_line) key so
-      // re-entering the same chunk (e.g. across cycles) is idempotent.
+      // Upsert on the unique (repo_slug, commit_sha, path, start_line, model)
+      // key. Including `model` in the key means a model change writes new rows
+      // rather than colliding with a prior model's embeddings (which live in a
+      // different vector space). Re-entering the same chunk within a run is
+      // deduped via indexedChunkKeys before we ever get here, but
+      // ignoreDuplicates guards against concurrent writers.
       const { error } = await this.supabase!
         .from("repo_embeddings")
         .upsert(rows, {
-          onConflict: "repo_slug,commit_sha,path,start_line",
+          onConflict: "repo_slug,commit_sha,path,start_line,model",
           ignoreDuplicates: true,
         });
       if (error) {
@@ -287,6 +307,7 @@ export class EmbeddingStore {
   clear(): void {
     this.chunks = [];
     this.indexedPaths.clear();
+    this.indexedChunkKeys.clear();
     this.pendingEmbeds = [];
   }
 
@@ -443,6 +464,11 @@ function chunkBySize(
 // ---------------------------------------------------------------------------
 // Math
 // ---------------------------------------------------------------------------
+
+/** Stable identity for a chunk within the store: path + start line. */
+function chunkKey(path: string, startLine: number): string {
+  return `${path}:${startLine}`;
+}
 
 /** Parse a pgvector string like "[0.1,0.2,...]" into number[]. */
 function parseVectorString(s: string | null | undefined): number[] | null {

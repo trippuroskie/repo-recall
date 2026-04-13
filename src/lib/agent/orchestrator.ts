@@ -660,20 +660,38 @@ async function createAndSeedEmbeddingStore(
         : "Indexing key files for semantic search",
     status: "started",
   });
+  let seedFailed = false;
   try {
-    await seedEmbeddingStore(embeddingStore, repoInfo, files, readme, packageJson, token);
+    await seedEmbeddingStore(
+      embeddingStore,
+      repoInfo,
+      files,
+      readme,
+      packageJson,
+      commitSha,
+      token
+    );
   } catch (err) {
     console.warn(
-      "[orchestrator] Embedding store seeding failed, continuing without semantic search:",
+      "[orchestrator] Embedding store seeding failed, continuing with whatever we have:",
       err
     );
-    embeddingStore = undefined;
+    seedFailed = true;
+    // Discard the store only if we also have no cached chunks to fall back
+    // on — otherwise keep the loaded cache so semantic search still works
+    // against the previously-embedded slice of the repo.
+    if (embeddingStore.size === 0) {
+      embeddingStore = undefined;
+    }
   }
   if (embeddingStore) {
+    const suffix = cachedCount > 0 ? ` (${cachedCount} from cache)` : "";
     emit({
       type: "step",
       action: "seedIndex",
-      detail: `Indexed ${embeddingStore.size} chunks${cachedCount > 0 ? ` (${cachedCount} from cache)` : ""}`,
+      detail: seedFailed
+        ? `Seeding partially failed; serving ${embeddingStore.size} chunks${suffix}`
+        : `Indexed ${embeddingStore.size} chunks${suffix}`,
       status: "done",
     });
   }
@@ -1095,6 +1113,7 @@ async function seedEmbeddingStore(
   files: FileNode[],
   readme: string | null,
   packageJson: string | null,
+  commitSha: string | undefined,
   token?: string
 ): Promise<void> {
   const docs: { path: string; content: string }[] = [];
@@ -1106,7 +1125,9 @@ async function seedEmbeddingStore(
   // Select up to 12 high-signal files from the tree
   const highSignalPaths = selectHighSignalFiles(files, 12);
 
-  // Fetch content for high-signal files via GitHub API
+  // Fetch content for high-signal files via GitHub API, pinned to the same
+  // commit SHA used as the persistence key. If commitSha is missing, we fall
+  // back to branch HEAD — accepted drift since there's no cache to taint.
   const { Octokit } = await import("@octokit/rest");
   const octokit = new Octokit({ auth: token || process.env.GITHUB_TOKEN });
 
@@ -1118,6 +1139,7 @@ async function seedEmbeddingStore(
           owner: repoInfo.owner,
           repo: repoInfo.name,
           path,
+          ...(commitSha ? { ref: commitSha } : {}),
         });
         if ("content" in data && data.content) {
           const content = Buffer.from(data.content, "base64").toString("utf-8");
