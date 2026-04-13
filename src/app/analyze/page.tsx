@@ -12,6 +12,7 @@ function AnalyzeContent() {
   const repoUrl = searchParams.get("repo") || "";
   const token = searchParams.get("token") || undefined;
   const depth = searchParams.get("depth") === "deep" ? "deep" : "standard";
+  const force = searchParams.get("force") === "1";
 
   const handleComplete = useCallback(
     (brief: ProjectBrief) => {
@@ -37,6 +38,7 @@ function AnalyzeContent() {
       repoUrl={repoUrl}
       token={token}
       depth={depth}
+      force={force}
       onComplete={handleComplete}
       onError={handleError}
     />
