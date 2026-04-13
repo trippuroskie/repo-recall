@@ -81,6 +81,17 @@ export class EmbeddingStore {
     this.repoSlug = opts?.repoSlug;
     this.commitSha = opts?.commitSha;
     this.supabase = opts?.supabase;
+
+    // The pgvector column is fixed at vector(256) (migration 009). If a caller
+    // ever asks for different dimensions, disable persistence rather than
+    // write/read incompatible vectors into a column that would either reject
+    // them or corrupt the cache.
+    if (this.supabase && this.dimensions !== DEFAULT_DIMENSIONS) {
+      console.warn(
+        `[vectorSearch] Disabling persistence: dimensions=${this.dimensions} does not match pgvector column width (${DEFAULT_DIMENSIONS}).`
+      );
+      this.supabase = undefined;
+    }
   }
 
   /** Whether this store is wired up for pgvector persistence */
@@ -161,23 +172,33 @@ export class EmbeddingStore {
     if (docs.length === 0) return;
 
     // Chunk all documents, then filter at the chunk level so partial cache
-    // coverage doesn't suppress re-embedding of the missing chunks.
+    // coverage doesn't suppress re-embedding of the missing chunks. We do NOT
+    // populate `indexedChunkKeys` / `indexedPaths` yet — if the embed call
+    // throws partway through, leaving optimistic markers would cause later
+    // reads to treat those chunks as cached and skip them forever.
     const allChunks: { text: string; metadata: ChunkMetadata }[] = [];
+    const seenKeysThisCall = new Set<string>();
     for (const doc of docs) {
       const baseLineOffset = doc.startLine ?? 1;
       const chunks = chunkCode(doc.content, doc.path, baseLineOffset);
       for (const chunk of chunks) {
         const key = chunkKey(chunk.metadata.path, chunk.metadata.startLine);
-        if (this.indexedChunkKeys.has(key)) continue;
-        this.indexedChunkKeys.add(key);
+        // Skip chunks we already have persisted, and dedupe within this call.
+        if (this.indexedChunkKeys.has(key) || seenKeysThisCall.has(key)) continue;
+        seenKeysThisCall.add(key);
         allChunks.push(chunk);
       }
-      this.indexedPaths.add(doc.path);
     }
 
-    if (allChunks.length === 0) return;
+    if (allChunks.length === 0) {
+      // No chunks to embed — but record that addDocuments was invoked for these
+      // paths so isIndexed() can short-circuit repeat calls.
+      for (const doc of docs) this.indexedPaths.add(doc.path);
+      return;
+    }
 
-    // Embed in batches of 96
+    // Embed in batches of 96. Mark chunks as indexed only after the batch
+    // succeeds, so a mid-flight embed failure doesn't poison the cache.
     const BATCH_SIZE = 96;
     for (let i = 0; i < allChunks.length; i += BATCH_SIZE) {
       const batch = allChunks.slice(i, i + BATCH_SIZE);
@@ -193,6 +214,9 @@ export class EmbeddingStore {
           content: batch[j].text,
         };
         this.chunks.push(stored);
+        this.indexedChunkKeys.add(
+          chunkKey(stored.metadata.path, stored.metadata.startLine)
+        );
         newlyStored.push(stored);
       }
 
@@ -203,6 +227,10 @@ export class EmbeddingStore {
         await this.persistChunks(newlyStored);
       }
     }
+
+    // All batches succeeded — now it's safe to mark the submitted paths as
+    // indexed so `isIndexed()` shortcuts redundant background calls.
+    for (const doc of docs) this.indexedPaths.add(doc.path);
   }
 
   /** Upsert stored chunks into Supabase. Swallows errors (non-fatal). */

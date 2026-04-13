@@ -614,11 +614,11 @@ On repo clone, DeepWiki computes embeddings for every file and writes the FAISS 
 
 ### Our Approach
 
-Stay hybrid — we still embed on-demand (not the full repo upfront), but write results through to Supabase `pgvector` keyed by `(repo_slug, commit_sha, path, start_line)`. On a new analysis:
+Stay hybrid — we still embed on-demand (not the full repo upfront), but write results through to Supabase `pgvector` keyed by `(repo_slug, commit_sha, path, start_line, model)`. Including `model` in the key means swapping the embedding model produces a fresh cache rather than mixing vectors from different embedding spaces. On a new analysis:
 
 1. Capture the current HEAD commit SHA (use `commits[0].sha`).
-2. Load any existing embeddings for `(repo_slug, commit_sha)` into memory.
-3. Seed / auto-index only the paths not already present.
+2. Load any existing embeddings for `(repo_slug, commit_sha, model)` into memory.
+3. Seed / auto-index only the chunks not already present.
 4. On every new chunk, insert into `repo_embeddings` write-through.
 5. Search stays in-memory cosine (chunk counts are small — ivfflat ANN isn't needed yet, but the index exists for future growth).
 
@@ -631,7 +631,7 @@ Reruns at the same commit become free on the embedding side. Reruns at a new com
 - `create extension if not exists vector;`
 - Table `public.repo_embeddings`:
   - `id uuid pk`, `repo_slug text`, `commit_sha text`, `path text`, `start_line int`, `end_line int`, `snippet text`, `content text`, `embedding vector(256)`, `model text`, `created_at timestamptz`
-  - Unique `(repo_slug, commit_sha, path, start_line)` to make write-through idempotent
+  - Unique `(repo_slug, commit_sha, path, start_line, model)` to make write-through idempotent and scope the cache per embedding model
   - B-tree index on `(repo_slug, commit_sha)` for the load query
   - ivfflat index on `embedding vector_cosine_ops` (lists=100) — not used today but ready if we swap search to pgvector
 - RLS: deny by default; server writes via service role client.
@@ -641,7 +641,7 @@ Reruns at the same commit become free on the embedding side. Reruns at a new com
 **File:** `src/lib/agent/vectorSearch.ts`
 
 - Constructor accepts `{ repoSlug?, commitSha?, supabase? }`. If all three are present, persistence is on.
-- `async loadFromDb()` — select all chunks for `(repo_slug, commit_sha)` into memory; mark their paths as indexed so `addDocuments` skips them.
+- `async loadFromDb()` — select all chunks for `(repo_slug, commit_sha, model)` into memory; record their chunk keys (`path:startLine`) so `addDocuments` skips only the cached chunks, not the whole file.
 - `addDocuments` — after embedding a new chunk, upsert into `repo_embeddings` alongside the in-memory push. Batched.
 - Failures on persistence must degrade gracefully — the in-memory store keeps working.
 
