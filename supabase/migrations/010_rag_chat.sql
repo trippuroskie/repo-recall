@@ -54,11 +54,19 @@ as $$
   limit match_count;
 $$;
 
--- Allow authenticated users (and anon, for public briefs) to invoke the RPC.
--- The function is SECURITY DEFINER so it bypasses repo_embeddings RLS, but
--- only returns rows for the (repo, sha) the caller asked for.
+-- Lock the RPC down to the service role. The function is SECURITY DEFINER so
+-- it intentionally bypasses repo_embeddings RLS — but the table is keyed only
+-- by (repo_slug, commit_sha, ...), with no user_id. If anon/authenticated
+-- could invoke this RPC directly with the public key, they could enumerate
+-- chunk content (and embeddings) for any repo any user has analyzed,
+-- including private ones. Callers (e.g. the chat route) must go through a
+-- server-side createServiceClient() that holds the service role key.
+revoke execute on function public.match_repo_embeddings(vector(256), text, text, int)
+  from public;
+revoke execute on function public.match_repo_embeddings(vector(256), text, text, int)
+  from anon, authenticated;
 grant execute on function public.match_repo_embeddings(vector(256), text, text, int)
-  to anon, authenticated, service_role;
+  to service_role;
 
 -- ── 3. Reproducibly add `model` to the unique constraint ───────────────────
 
