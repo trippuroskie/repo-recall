@@ -137,6 +137,7 @@ async function runStandardAnalysis(config: OrchestratorConfig): Promise<ProjectB
   });
 
   brief.depth = "standard";
+  if (commits[0]?.sha) brief.commitSha = commits[0].sha;
 
   await finalizeTimeline(brief, prs, commits, emit);
 
@@ -301,6 +302,7 @@ async function runDeepAnalysis(config: OrchestratorConfig): Promise<ProjectBrief
   });
 
   brief.depth = "deep";
+  if (commits[0]?.sha) brief.commitSha = commits[0].sha;
 
   await finalizeTimeline(brief, prs, commits, emit, {
     phase: "Generating timeline insights",
@@ -1074,7 +1076,11 @@ function buildFallbackSummary(toolResults: ToolResult[]): string {
 // Embedding store seeding — fetch and embed high-signal files before exploration
 // ---------------------------------------------------------------------------
 
-/** Patterns for identifying high-signal files from the file tree */
+/** Patterns for identifying high-signal files from the file tree.
+ *  Lower priority = embed first. Bumped from ~14 candidates to a much wider
+ *  net so RAG-backed chat (initiative #1 of embeddings-next-steps.md) has
+ *  meaningful retrieval surface for non-trivial questions. The total seed
+ *  count is still bounded by SEED_FILE_LIMIT below. */
 const HIGH_SIGNAL_PATTERNS: { re: RegExp; priority: number }[] = [
   // Entry points
   { re: /^(src\/)?(index|main|app|server)\.(ts|tsx|js|jsx|py|go|rs)$/, priority: 0 },
@@ -1087,18 +1093,36 @@ const HIGH_SIGNAL_PATTERNS: { re: RegExp; priority: number }[] = [
   { re: /^src\/app\/.*\/(page|layout|route)\.(ts|tsx|js|jsx)$/, priority: 2 },
   { re: /^(src\/)?pages\/.*\.(ts|tsx|js|jsx)$/, priority: 3 },
   { re: /^(src\/)?app\/api\/.*route\.(ts|js)$/, priority: 2 },
-  // Core lib / utils
-  { re: /^(src\/)?(lib|utils|services|core)\/[^/]+\.(ts|tsx|js|jsx|py|go|rs)$/, priority: 3 },
+  // API/handler patterns common outside Next.js
+  { re: /^(src\/)?(handlers|controllers|routes|endpoints|api)\/.+\.(ts|tsx|js|jsx|py|go|rs)$/, priority: 2 },
+  // Core lib / utils — top-level files (priority 3)
+  { re: /^(src\/)?(lib|utils|services|core|server)\/[^/]+\.(ts|tsx|js|jsx|py|go|rs)$/, priority: 3 },
+  // Core lib / utils — one level deeper (priority 4 so they fill behind top-level)
+  { re: /^(src\/)?(lib|utils|services|core|server)\/[^/]+\/[^/]+\.(ts|tsx|js|jsx|py|go|rs)$/, priority: 4 },
   // Schema / models / types
-  { re: /^(src\/)?(types|models|schema|entities)\.(ts|js|py)$/, priority: 2 },
-  { re: /^(src\/)?(types|models|schema|entities)\/[^/]+\.(ts|js|py)$/, priority: 3 },
+  { re: /^(src\/)?(types|models|schema|entities|domain)\.(ts|js|py)$/, priority: 2 },
+  { re: /^(src\/)?(types|models|schema|entities|domain)\/[^/]+\.(ts|js|py)$/, priority: 3 },
+  // Database migrations and schema files
+  { re: /^(supabase\/migrations|prisma|migrations|db\/migrations)\/.+\.(sql|ts|js|prisma)$/, priority: 3 },
+  { re: /^(prisma\/schema\.prisma|drizzle\.config\.(ts|js))$/, priority: 2 },
+  // Hooks and providers (often hold app-wide state/auth/db wiring)
+  { re: /^(src\/)?(hooks|providers|context|stores)\/[^/]+\.(ts|tsx|js|jsx)$/, priority: 4 },
 ];
+
+/** Paths matching any of these are excluded regardless of pattern matches —
+ *  they bloat the cache without helping retrieval quality. */
+const SEED_EXCLUDE_RE = /(^|\/)(node_modules|dist|build|out|\.next|\.turbo|coverage|__tests__|__mocks__|fixtures|tests?|e2e|cypress|playwright)(\/|$)/;
+
+/** Hard cap on seeded files. First-run cost scales linearly with this; reruns
+ *  at the same commit pay nothing thanks to the pgvector cache (migration 009). */
+const SEED_FILE_LIMIT = 40;
 
 function selectHighSignalFiles(files: FileNode[], limit: number): string[] {
   const candidates: { path: string; priority: number; depth: number }[] = [];
 
   for (const file of files) {
     if (file.type !== "file") continue;
+    if (SEED_EXCLUDE_RE.test(file.path)) continue;
     for (const pattern of HIGH_SIGNAL_PATTERNS) {
       if (pattern.re.test(file.path)) {
         candidates.push({
@@ -1131,8 +1155,9 @@ async function seedEmbeddingStore(
   if (readme) docs.push({ path: "README.md", content: readme });
   if (packageJson) docs.push({ path: "package.json", content: packageJson });
 
-  // Select up to 12 high-signal files from the tree
-  const highSignalPaths = selectHighSignalFiles(files, 12);
+  // Select high-signal files from the tree (cap is bounded by SEED_FILE_LIMIT
+  // rather than a magic number — first-run cost is linear in this).
+  const highSignalPaths = selectHighSignalFiles(files, SEED_FILE_LIMIT);
 
   // Fetch content for high-signal files via GitHub API, pinned to the same
   // commit SHA used as the persistence key. If commitSha is missing, we fall
