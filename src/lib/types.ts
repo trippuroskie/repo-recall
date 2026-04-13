@@ -179,6 +179,10 @@ export interface ProjectBrief {
 
   // Analysis depth used to produce this brief
   depth?: "standard" | "deep";
+
+  // The commit SHA the analysis was pinned to. Used by chat RAG retrieval to
+  // scope semantic search against the matching slice of repo_embeddings.
+  commitSha?: string;
 }
 
 export interface ChatMessage {
