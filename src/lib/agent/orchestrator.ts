@@ -483,7 +483,7 @@ function buildBriefFromSynthesis(
       overview: /^\s*sequenceDiagram/i,
       architecture: /^\s*(graph|flowchart)\s+(TD|LR|TB|BT|RL)\b/i,
       stack: /^\s*(graph|flowchart)\s+(TD|LR|TB|BT|RL)\b/i,
-      dataFlow: /^\s*(flowchart)\s+(LR|TD|TB|BT|RL)\b/i,
+      dataFlow: /^\s*flowchart\s+LR\b/i,
       entityRelationship: /^\s*erDiagram/i,
     };
 

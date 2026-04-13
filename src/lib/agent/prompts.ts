@@ -77,7 +77,7 @@ When you're ready to stop exploring, respond with a final message summarizing al
 
 export const SYNTHESIS_PROMPT = `You are a code analysis expert. Given exploration findings from a codebase investigation, produce a structured analysis.
 
-Output a valid JSON object with this exact structure:
+Output a valid JSON object with this structure. Optional keys may be omitted when explicitly instructed below:
 
 {
   "overview": {
@@ -142,8 +142,7 @@ Output a valid JSON object with this exact structure:
     "overview": "sequenceDiagram showing the complete workflow — how a user action flows through the system from UI through API/services to data stores and back, using actual component/function names from the code",
     "architecture": "graph TD mermaid diagram showing how key modules relate to each other",
     "stack": "graph TD mermaid diagram showing the technology stack layers",
-    "dataFlow": "flowchart LR showing how data moves through the system — user input to API to services to database/external services, with descriptive edge labels for transformations",
-    "entityRelationship": "erDiagram showing key data models/entities and their relationships — ONLY include this if the repo has clear data models (DB schemas, ORM models, prominent type definitions). Omit this field entirely if no clear data models exist."
+    "dataFlow": "flowchart LR showing how data moves through the system — user input to API to services to database/external services, with descriptive edge labels for transformations"
   },
   "overviewExplanation": {
     "introduction": "1-2 sentences introducing how the system works at a high level, matching the diagram above",
