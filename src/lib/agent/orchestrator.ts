@@ -945,9 +945,11 @@ function buildBriefFromSynthesis(
     const isValidMermaid = (v: unknown): v is string =>
       typeof v === "string" && mermaidKeywordRe.test(v);
 
-    // Per-key type constraints: overview must be sequenceDiagram, architecture/stack must be graph
+    // Per-key type constraints. Overview may be sequenceDiagram (linear flows) or
+    // graph/flowchart TD|LR (agentic loops, pipelines, layered subsystems) — the
+    // synthesizer picks whichever better matches the system's shape.
     const expectedTypeRe: Record<string, RegExp> = {
-      overview: /^\s*sequenceDiagram/i,
+      overview: /^\s*(sequenceDiagram|(graph|flowchart)\s+(TD|LR|TB|BT|RL)\b)/i,
       architecture: /^\s*(graph|flowchart)\s+(TD|LR|TB|BT|RL)\b/i,
       stack: /^\s*(graph|flowchart)\s+(TD|LR|TB|BT|RL)\b/i,
       dataFlow: /^\s*flowchart\s+LR\b/i,

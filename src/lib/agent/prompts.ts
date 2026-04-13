@@ -142,7 +142,7 @@ Output a valid JSON object with this structure. Optional keys may be omitted whe
     ]
   },
   "diagrams": {
-    "overview": "sequenceDiagram showing the complete workflow — how a user action flows through the system from UI through API/services to data stores and back, using actual component/function names from the code",
+    "overview": "HIGH-LEVEL system-shape diagram. Choose sequenceDiagram for a linear request/response app, or flowchart TD with subgraphs for systems with loops, agents, pipelines, or distinct subsystems. Goal: let a reader understand the system's shape in one glance. See Overview Diagram Rules below.",
     "architecture": "graph TD mermaid diagram showing how key modules relate to each other",
     "stack": "graph TD mermaid diagram showing the technology stack layers",
     "dataFlow": "flowchart LR showing how data moves through the system — user input to API to services to database/external services, with descriptive edge labels for transformations"
@@ -177,29 +177,66 @@ Output a valid JSON object with this structure. Optional keys may be omitted whe
 - WRONG: "Here is the diagram:\nsequenceDiagram\n..." — do NOT include any prose
 - RIGHT: "sequenceDiagram\n    participant User\n..."
 
-#### Overview Diagram (MUST be a sequenceDiagram)
-- Use "sequenceDiagram" type to show the complete request/data flow through the system
-- Include all major participants as actors: User, UI components, API routes, services, databases, external services
-- Show the primary user flow step by step with actual function/method names where possible
-- Use loops, alt blocks, and notes to show conditional logic and important behavior
-- Include return arrows to show responses flowing back
-- Sanitize ALL participant aliases and message labels: no special characters {}[]|;#& — use only alphanumeric, spaces, hyphens, slashes, dots, and parentheses
-- Keep participant aliases short (under 30 chars)
-- Example structure:
+#### Overview Diagram (system-shape diagram)
+The overview's job is to convey the **shape of the system** at a glance — its subsystems, any core loop, and its control flow. It is NOT a redundant copy of dataFlow (which shows data transformations). Before drafting, decide which shape fits:
+
+**Step 1 — Detect the shape.** Ask: does this system have (a) a single linear request path, or (b) a loop / agent / pipeline / orchestrator / clearly separable subsystems?
+- Signals for (b): a main loop (\`while\`/\`for\` driving iterations), an agent or orchestrator calling tools, a queue/worker pattern, an RPC bridge between processes, multiple layers with distinct responsibilities, approval/human-in-the-loop gates, retries with backoff as a first-class concept.
+
+**Step 2 — Pick the type.**
+- Shape (a) → use \`sequenceDiagram\`.
+- Shape (b) → use \`flowchart TD\` with subgraphs grouping nodes by layer/subsystem. DO NOT force-fit a cyclic/agentic system into a sequenceDiagram; the result is unreadable.
+
+**Step 3 — Ground it in this codebase.** Node/participant names MUST come from \`architecture.keyModules\` and the top-level \`codemap\` groupings you produced above. Do NOT invent generic boxes like "Core Service" or "API Routes" when you know the real module names.
+
+**Common rules (both types)**
+- Sanitize ALL labels: no special characters \`{}[]|;#&\` — only alphanumeric, spaces, hyphens, slashes, dots, parentheses.
+- Node/participant labels ≤ 25 chars. Put context in subgraph titles, \`Note over\` blocks, or edge labels — never in the label itself (truncated "pi-ai - Unified LLM provider registry, streaming p" is a failure).
+- Number the primary edges (\`1. Prompt\`, \`2. Tool call\`, \`3. Response\`...) so a reader can trace the flow in order without prose.
+- 6–12 nodes/participants. Fewer is better than cluttered.
+
+**Template A — linear request flow (sequenceDiagram):**
   sequenceDiagram
     participant User
     participant UI as React UI
     participant API as API Routes
-    participant Service as Core Service
+    participant Svc as Core Service
     participant DB as Database
-    User->>UI: Initiates action
-    UI->>API: POST /api/endpoint
-    API->>Service: processRequest(data)
-    Service->>DB: query(params)
-    DB-->>Service: results
-    Service-->>API: response
-    API-->>UI: JSON response
-    UI-->>User: Updated view
+    User->>UI: 1. Initiates action
+    UI->>API: 2. POST /api/endpoint
+    API->>Svc: 3. processRequest(data)
+    Svc->>DB: 4. query(params)
+    DB-->>Svc: results
+    Svc-->>API: response
+    API-->>UI: JSON
+    UI-->>User: 5. Updated view
+
+**Template B — agentic / looped / multi-subsystem (flowchart TD with subgraphs):**
+  flowchart TD
+    subgraph App["Application Layer"]
+      UI["Terminal / Web UI"]
+      User["User"]
+    end
+    subgraph Core["Core Engine"]
+      Loop{{"Agent Loop"}}
+      Session["Session Manager"]
+      Tools["Tool Registry"]
+    end
+    subgraph Infra["Infrastructure"]
+      LLM["LLM Provider API"]
+      FS["Local Filesystem"]
+    end
+    User -->|1. Prompt| Loop
+    Loop -->|2. Request| LLM
+    LLM -->|3. Response| Loop
+    Loop -->|4. Check history| Session
+    Loop -->|5. Trigger tool| Tools
+    Tools -->|6. Read/Write| FS
+    Tools -->|7. Result| Loop
+    Loop -->|8. Final answer| UI
+    UI -->|9. Display| User
+
+Use the template whose shape matches the code you read. If the system clearly has a loop or distinct subsystems, Template B almost always produces a more useful diagram than Template A.
 
 #### Architecture & Stack Diagrams (use graph TD or graph LR)
 - Keep diagrams focused: 8-15 nodes max, prefer clarity over completeness
@@ -224,8 +261,8 @@ Output a valid JSON object with this structure. Optional keys may be omitted whe
 - Include key attributes for each entity (2-4 most important fields)
 
 ### Overview Explanation Rules
-- The overviewExplanation should narrate the flow shown in the sequence diagram — think of it as a guided walkthrough
-- Write 3-6 steps that trace the primary user journey through the entire system
+- The overviewExplanation should narrate the flow shown in the overview diagram (whichever type you chose) — think of it as a guided walkthrough in the same order as the numbered edges
+- Write 3-6 steps that trace the primary journey through the system (user action → loop iterations → result), matching the diagram's numbering
 - Each step should reference real file paths and line numbers you read during exploration
 - Include specific function names, class names, and variable names in descriptions
 - The description should explain WHAT happens and WHY, not just restate the code
