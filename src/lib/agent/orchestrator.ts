@@ -634,6 +634,15 @@ async function createAndSeedEmbeddingStore(
     }
   }
 
+  // Diagnostic: surface why persistence did or didn't engage. Remove once
+  // Phase 6 is confirmed working end-to-end in the target environment.
+  console.log("[orchestrator] embedding persistence?", {
+    repoSlug: repoInfo.fullName,
+    hasSha: !!commitSha,
+    hasServiceCreds,
+    hasClient: !!supabase,
+  });
+
   let embeddingStore: EmbeddingStore | undefined = new EmbeddingStore({
     repoSlug: repoInfo.fullName,
     commitSha,
