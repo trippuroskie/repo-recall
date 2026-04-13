@@ -16,6 +16,7 @@ import { ToolExecutor, type ExecutorConfig } from "./executor";
 import { AGENT_TOOLS, type AgentToolCall, type ToolResult } from "./tools";
 import { buildExplorationPrompt, SYNTHESIS_PROMPT } from "./prompts";
 import { generateBrief } from "../analysis";
+import { EmbeddingStore } from "./vectorSearch";
 
 // Progress events emitted during analysis
 export type ProgressEvent =
@@ -46,11 +47,30 @@ export async function runAgenticAnalysis(config: OrchestratorConfig): Promise<Pr
   const { repoInfo, files, prs, commits, packageJson, readme, token, onProgress } = config;
   const emit = onProgress || (() => {});
 
+  // Initialize embedding store for semantic search (uses OPENROUTER_API_KEY)
+  let embeddingStore: EmbeddingStore | undefined;
+  if (process.env.OPENROUTER_API_KEY) {
+    embeddingStore = new EmbeddingStore();
+
+    // Seed with high-signal files before exploration begins
+    emit({ type: "step", action: "seedIndex", detail: "Indexing key files for semantic search", status: "started" });
+    try {
+      await seedEmbeddingStore(embeddingStore, repoInfo, files, readme, packageJson, token);
+    } catch (err) {
+      console.warn("[orchestrator] Embedding store seeding failed, continuing without semantic search:", err);
+      embeddingStore = undefined;
+    }
+    if (embeddingStore) {
+      emit({ type: "step", action: "seedIndex", detail: `Indexed ${embeddingStore.size} chunks`, status: "done" });
+    }
+  }
+
   const executor = new ToolExecutor({
     owner: repoInfo.owner,
     repo: repoInfo.name,
     token,
     fileTree: files,
+    embeddingStore,
   });
 
   // Phase 1: Exploration
@@ -601,6 +621,105 @@ function buildFallbackSummary(toolResults: ToolResult[]): string {
   }
 
   return sections.join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Embedding store seeding — fetch and embed high-signal files before exploration
+// ---------------------------------------------------------------------------
+
+/** Patterns for identifying high-signal files from the file tree */
+const HIGH_SIGNAL_PATTERNS: { re: RegExp; priority: number }[] = [
+  // Entry points
+  { re: /^(src\/)?(index|main|app|server)\.(ts|tsx|js|jsx|py|go|rs)$/, priority: 0 },
+  { re: /^(src\/)?main\.(ts|js|py|go|rs)$/, priority: 0 },
+  { re: /^cmd\/.*\/main\.go$/, priority: 0 },
+  // Config files
+  { re: /^(next|nuxt|vite|astro|svelte)\.config\.(ts|js|mjs)$/, priority: 1 },
+  { re: /^tsconfig\.json$/, priority: 2 },
+  // Route handlers / pages (App Router, Pages Router, API routes)
+  { re: /^src\/app\/.*\/(page|layout|route)\.(ts|tsx|js|jsx)$/, priority: 2 },
+  { re: /^(src\/)?pages\/.*\.(ts|tsx|js|jsx)$/, priority: 3 },
+  { re: /^(src\/)?app\/api\/.*route\.(ts|js)$/, priority: 2 },
+  // Core lib / utils
+  { re: /^(src\/)?(lib|utils|services|core)\/[^/]+\.(ts|tsx|js|jsx|py|go|rs)$/, priority: 3 },
+  // Schema / models / types
+  { re: /^(src\/)?(types|models|schema|entities)\.(ts|js|py)$/, priority: 2 },
+  { re: /^(src\/)?(types|models|schema|entities)\/[^/]+\.(ts|js|py)$/, priority: 3 },
+];
+
+function selectHighSignalFiles(files: FileNode[], limit: number): string[] {
+  const candidates: { path: string; priority: number; depth: number }[] = [];
+
+  for (const file of files) {
+    if (file.type !== "file") continue;
+    for (const pattern of HIGH_SIGNAL_PATTERNS) {
+      if (pattern.re.test(file.path)) {
+        candidates.push({
+          path: file.path,
+          priority: pattern.priority,
+          depth: file.path.split("/").length,
+        });
+        break; // first match wins
+      }
+    }
+  }
+
+  // Sort by priority (lower = better), then by path depth (shallower = better)
+  candidates.sort((a, b) => a.priority - b.priority || a.depth - b.depth);
+  return candidates.slice(0, limit).map((c) => c.path);
+}
+
+async function seedEmbeddingStore(
+  store: EmbeddingStore,
+  repoInfo: RepoInfo,
+  files: FileNode[],
+  readme: string | null,
+  packageJson: string | null,
+  token?: string
+): Promise<void> {
+  const docs: { path: string; content: string }[] = [];
+
+  // Always index README and package.json if available
+  if (readme) docs.push({ path: "README.md", content: readme });
+  if (packageJson) docs.push({ path: "package.json", content: packageJson });
+
+  // Select up to 12 high-signal files from the tree
+  const highSignalPaths = selectHighSignalFiles(files, 12);
+
+  // Fetch content for high-signal files via GitHub API
+  const { Octokit } = await import("@octokit/rest");
+  const octokit = new Octokit({ auth: token || process.env.GITHUB_TOKEN });
+
+  const fetchPromises = highSignalPaths
+    .filter((p) => !docs.some((d) => d.path === p)) // skip if already have content
+    .map(async (path) => {
+      try {
+        const { data } = await octokit.repos.getContent({
+          owner: repoInfo.owner,
+          repo: repoInfo.name,
+          path,
+        });
+        if ("content" in data && data.content) {
+          const content = Buffer.from(data.content, "base64").toString("utf-8");
+          // Skip very large files
+          if (content.length <= 100_000) {
+            return { path, content };
+          }
+        }
+      } catch {
+        // File not fetchable — skip
+      }
+      return null;
+    });
+
+  const fetched = await Promise.all(fetchPromises);
+  for (const f of fetched) {
+    if (f) docs.push(f);
+  }
+
+  if (docs.length > 0) {
+    await store.addDocuments(docs);
+  }
 }
 
 async function generateMilestoneSummaries(

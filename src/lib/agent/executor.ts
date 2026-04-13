@@ -3,6 +3,7 @@
 import { Octokit } from "@octokit/rest";
 import type { FileNode } from "../types";
 import type { AgentToolCall, ToolResult } from "./tools";
+import type { EmbeddingStore } from "./vectorSearch";
 
 const SKIP_EXTENSIONS = new Set([
   "png", "jpg", "jpeg", "gif", "svg", "ico", "webp", "bmp",
@@ -57,6 +58,7 @@ export interface ExecutorConfig {
   repo: string;
   token?: string;
   fileTree: FileNode[];
+  embeddingStore?: EmbeddingStore;
 }
 
 export interface RateLimitInfo {
@@ -72,6 +74,7 @@ export class ToolExecutor {
   private fileTree: FileNode[];
   private apiCalls = 0;
   private maxApiCalls = 120; // increased budget for deeper exploration
+  private embeddingStore: EmbeddingStore | null;
   rateLimit: RateLimitInfo = { remaining: 5000, total: 5000, resetAt: new Date() };
 
   constructor(config: ExecutorConfig) {
@@ -79,6 +82,7 @@ export class ToolExecutor {
     this.owner = config.owner;
     this.repo = config.repo;
     this.fileTree = config.fileTree;
+    this.embeddingStore = config.embeddingStore ?? null;
   }
 
   get apiCallCount() {
@@ -102,6 +106,11 @@ export class ToolExecutor {
           toolCall.params.path,
           toolCall.params.startLine,
           toolCall.params.endLine
+        );
+      case "searchSemantic":
+        return this.searchSemantic(
+          toolCall.params.query,
+          toolCall.params.topK
         );
     }
   }
@@ -137,6 +146,11 @@ export class ToolExecutor {
       const result = truncated
         ? numbered.split("\n").slice(0, 750).join("\n") + `\n... (truncated at 750/${lines.length} lines)`
         : numbered;
+
+      // Auto-index into embedding store for semantic search
+      if (this.embeddingStore && !this.embeddingStore.isIndexed(path)) {
+        this.embeddingStore.addDocumentsBackground([{ path, content }]);
+      }
 
       return { ...base, result, truncated };
     } catch {
@@ -266,9 +280,54 @@ export class ToolExecutor {
         .map((line, i) => `${start + i}: ${line}`)
         .join("\n");
 
+      // Auto-index full file into embedding store for semantic search
+      if (this.embeddingStore && !this.embeddingStore.isIndexed(path)) {
+        this.embeddingStore.addDocumentsBackground([{ path, content }]);
+      }
+
       return { ...base, result: `${path} (lines ${start}-${end} of ${lines.length}):\n${slice}` };
     } catch {
       return { ...base, result: `File not found: ${path}`, error: "not_found" };
+    }
+  }
+
+  private async searchSemantic(
+    query: string,
+    topK?: number
+  ): Promise<ToolResult> {
+    const base = { tool: "searchSemantic" as const, params: { query, topK } };
+
+    if (!this.embeddingStore) {
+      return {
+        ...base,
+        result: "Semantic search is not available for this analysis.",
+        error: "no_store",
+      };
+    }
+
+    try {
+      const k = Math.min(topK || 10, 20);
+      const results = await this.embeddingStore.search(query, k);
+
+      if (results.length === 0) {
+        return { ...base, result: "No semantically similar code found." };
+      }
+
+      const formatted = results.map((r) => {
+        const lines = r.content.split("\n").slice(0, 15).join("\n");
+        return `### ${r.path} (lines ${r.startLine}-${r.endLine}) [score: ${r.score}]\n${lines}`;
+      });
+
+      return {
+        ...base,
+        result: `Found ${results.length} semantically similar code sections:\n\n${formatted.join("\n\n")}`,
+      };
+    } catch (err) {
+      return {
+        ...base,
+        result: `Semantic search failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        error: "search_failed",
+      };
     }
   }
 
