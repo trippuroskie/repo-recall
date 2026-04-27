@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import { Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const inter = Inter({
@@ -29,7 +30,18 @@ export default function RootLayout({
       lang="en"
       className={`${inter.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {children}
+        {process.env.NODE_ENV === "production" &&
+          process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
+            <Script
+              defer
+              src="https://umami-five-eta.vercel.app/script.js"
+              data-website-id={process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID}
+              strategy="afterInteractive"
+            />
+          )}
+      </body>
     </html>
   );
 }
