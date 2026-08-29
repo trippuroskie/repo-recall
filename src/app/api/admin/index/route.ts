@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import {
   fetchRepoInfo,
@@ -12,6 +13,14 @@ import { generateBrief } from "@/lib/analysis";
 import { savePublicBrief } from "@/lib/store";
 
 export const maxDuration = 300;
+
+function isAdminAuthorized(header: string | null, secret: string): boolean {
+  if (!header?.startsWith("Bearer ")) return false;
+  const provided = Buffer.from(header.slice("Bearer ".length));
+  const expected = Buffer.from(secret);
+  if (provided.length !== expected.length) return false;
+  return timingSafeEqual(provided, expected);
+}
 
 const SEED_REPOS = [
   "langchain-ai/langchain",
@@ -37,7 +46,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (authHeader !== `Bearer ${adminSecret}`) {
+    if (!isAdminAuthorized(authHeader, adminSecret)) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
