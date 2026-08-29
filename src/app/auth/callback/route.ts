@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createServiceClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url);
@@ -34,7 +35,8 @@ export async function GET(request: NextRequest) {
         data: { session },
       } = await supabase.auth.getSession();
       if (session?.provider_token) {
-        await supabase
+        const service = await createServiceClient();
+        await service
           .from("profiles")
           .update({
             github_access_token: session.provider_token,
