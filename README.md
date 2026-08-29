@@ -4,6 +4,46 @@ The fastest way to get back into your own code.
 
 RepoRecall generates a structured **project brief** from a GitHub repository: what the project does, how it is built, what changed, and where to start. Browse pre-indexed public repos without an account, or sign in with GitHub to analyze your own.
 
+## Screenshots
+
+Example product UI (sample brief data).
+
+**Home** — search a GitHub repo or open a pre-indexed public brief.
+
+![Home](docs/screenshots/home.png)
+
+**Sign in** — GitHub OAuth. Repo contents are not stored; only the generated brief is.
+
+![Sign in](docs/screenshots/login.png)
+
+**Overview** — product summary, stats, and how the system works.
+
+![Brief overview](docs/screenshots/brief-overview.png)
+
+**Architecture** — stack, integrations, and generated diagrams.
+
+![Architecture](docs/screenshots/brief-architecture.png)
+
+**Features** — feature map classified by business purpose.
+
+![Features](docs/screenshots/brief-features.png)
+
+**Timeline** — milestones from PRs and commits.
+
+![Timeline](docs/screenshots/brief-timeline.png)
+
+**Where to start** — recommended files and flows for re-entry.
+
+![Where to start](docs/screenshots/brief-entrypoints.png)
+
+**Your briefs** — saved analyses after you sign in.
+
+![Your briefs](docs/screenshots/briefs.png)
+
+**Billing** — free tier usage and Pro plan.
+
+![Billing](docs/screenshots/billing.png)
+
 ## Features
 
 - **Project briefs** — overview, architecture, features, business context, change timeline, and recommended entrypoints
