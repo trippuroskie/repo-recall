@@ -32,11 +32,14 @@ export default function RootLayout({
     >
       <body className="min-h-full flex flex-col">
         {children}
+        {/* Analytics are opt-in: both the script URL and the site ID must be
+            set, so a fresh clone or fork ships with no tracking at all. */}
         {process.env.NODE_ENV === "production" &&
+          process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL &&
           process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID && (
             <Script
               defer
-              src="https://umami-five-eta.vercel.app/script.js"
+              src={process.env.NEXT_PUBLIC_UMAMI_SCRIPT_URL}
               data-website-id={process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID}
               strategy="afterInteractive"
             />
