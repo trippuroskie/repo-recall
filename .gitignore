@@ -30,7 +30,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
+# Environment / secrets — never commit real keys.
+# .env.example is the only env file that belongs in git.
 .env*
 !.env.example
 
@@ -40,3 +41,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Agent & editor tooling (local, not shared)
+.claude/
+.cursor/
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Local scratch
+*.tmp.js
