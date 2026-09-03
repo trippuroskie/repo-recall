@@ -263,9 +263,10 @@ export async function getUsageCount(
   return count ?? 0;
 }
 
-// Profile helpers
+// Profile helpers — always use the service client. GitHub tokens and Stripe
+// IDs are revoked from the authenticated role (see migration 011).
 export async function getProfile(userId: string) {
-  const supabase = await getClient();
+  const supabase = await createServiceClient();
   const { data } = await supabase
     .from("profiles")
     .select("*")

@@ -44,12 +44,14 @@ export function AnalysisProgress({
   repoUrl,
   token,
   depth,
+  force,
   onComplete,
   onError,
 }: {
   repoUrl: string;
   token?: string;
   depth?: "standard" | "deep";
+  force?: boolean;
   onComplete: (brief: ProjectBrief) => void;
   onError: (message: string) => void;
 }) {
@@ -79,6 +81,7 @@ export function AnalysisProgress({
             repoUrl: repoUrl.trim(),
             token: token?.trim() || undefined,
             depth: depth === "deep" ? "deep" : undefined,
+            force: force || undefined,
           }),
           signal: controller.signal,
         });
