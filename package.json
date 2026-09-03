@@ -2,6 +2,25 @@
   "name": "repo-recall",
   "version": "0.1.0",
   "private": true,
+  "description": "Analyzes a GitHub repo with an agentic exploration loop and generates a structured brief — architecture, features, entrypoints, and a code map — so you can get back into a dormant codebase fast.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/trippuroskie/repo-recall.git"
+  },
+  "keywords": [
+    "code-comprehension",
+    "codebase-analysis",
+    "agentic",
+    "llm",
+    "openrouter",
+    "rag",
+    "github",
+    "nextjs"
+  ],
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

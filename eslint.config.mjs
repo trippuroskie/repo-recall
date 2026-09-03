@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local agent/editor tooling may check out copies of the repo in here;
+    // linting them reports thousands of duplicate problems.
+    ".claude/**",
+    ".cursor/**",
   ]),
 ]);
 
