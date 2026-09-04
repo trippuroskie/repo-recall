@@ -74,11 +74,6 @@ start reading.
 
 ## Screenshots
 
-### Start from a repo
-Paste a URL or pick one of the pre-indexed repos.
-
-![RepoRecall landing page with a repository search field and cards for four pre-indexed repos](docs/screenshots/01-landing.png)
-
 ### Browse pre-indexed open source
 Public briefs need no account.
 
